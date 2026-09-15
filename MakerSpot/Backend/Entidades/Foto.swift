@@ -12,21 +12,10 @@ enum DestinoFoto: Codable, Equatable, Sendable {
     case perfil(UUID)
 }
 
-enum StatusModeracaoFoto: String, Codable, CaseIterable, Sendable {
-    case pendente, aprovada, rejeitada
-}
-
 struct Foto: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let enviadaPorID: UUID
     let destino: DestinoFoto
     var textoAlternativo: String?
     let criadaEm: Date
-}
-
-struct ModeracaoFoto: Identifiable, Codable, Equatable, Sendable {
-    let id: UUID
-    var status: StatusModeracaoFoto = .pendente
-    var motivo: String?
-    var analisadaEm: Date?
 }

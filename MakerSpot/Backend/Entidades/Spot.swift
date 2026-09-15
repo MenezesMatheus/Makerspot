@@ -19,6 +19,7 @@ enum DetalhesSpot: Codable, Equatable, Sendable {
 struct Spot: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let proprietarioID: UUID
+    var nomePublicador: String
     var nome: String
     var descricao: String
     var localizacao: Localizacao

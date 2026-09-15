@@ -26,6 +26,7 @@ enum ErroSessaoUsuario: LocalizedError {
     }
 }
 
+@MainActor
 @Observable
 final class SessaoUsuario {
     private(set) var usuarioAtual: Usuario?
@@ -54,18 +55,17 @@ final class SessaoUsuario {
 }
 
 private enum ChaveiroSessao {
-    private static let conta = "usuarioApple"
-    private static var servico: String {
-        Bundle.main.bundleIdentifier ?? "MakerSpot"
+    private static var consultaBase: [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: Bundle.main.bundleIdentifier ?? "MakerSpot",
+            kSecAttrAccount: "usuarioApple"
+        ]
     }
 
     static func salvar(_ identificador: String) throws {
         let dados = Data(identificador.utf8)
-        let consulta: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: servico,
-            kSecAttrAccount: conta
-        ]
+        let consulta = consultaBase
 
         SecItemDelete(consulta as CFDictionary)
 
@@ -79,13 +79,9 @@ private enum ChaveiroSessao {
     }
 
     static func ler() throws -> String? {
-        let consulta: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: servico,
-            kSecAttrAccount: conta,
-            kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne
-        ]
+        var consulta = consultaBase
+        consulta[kSecReturnData] = true
+        consulta[kSecMatchLimit] = kSecMatchLimitOne
 
         var resultado: CFTypeRef?
         let status = SecItemCopyMatching(consulta as CFDictionary, &resultado)
@@ -102,11 +98,7 @@ private enum ChaveiroSessao {
     }
 
     static func remover() throws {
-        let consulta: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: servico,
-            kSecAttrAccount: conta
-        ]
+        let consulta = consultaBase
 
         let status = SecItemDelete(consulta as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

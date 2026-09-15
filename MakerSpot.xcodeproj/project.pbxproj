@@ -14,6 +14,7 @@
 		9E35D11A30581BA0004EAC58 /* Exceptions for "MakerSpot" folder in "MakerSpot" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Backend/CloudKit/EsquemaCloudKit.ckdb,
 				Info.plist,
 			);
 			target = 9E35D10C30581B9F004EAC58 /* MakerSpot */;

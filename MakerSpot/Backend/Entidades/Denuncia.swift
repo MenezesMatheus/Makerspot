@@ -14,22 +14,23 @@ enum StatusDenuncia: String, Codable, CaseIterable, Sendable {
 
 struct Denuncia: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
-    let denuncianteID: UUID
     let spotID: UUID
-    let denunciadoID: UUID
     let texto: String
     let criadaEm: Date
 }
 
 struct AnaliseDenuncia: Identifiable, Codable, Equatable, Sendable {
-    let id: UUID
+    let denunciaID: UUID
     var status: StatusDenuncia = .pendente
     var observacao: String?
     var analisadaEm: Date?
+
+    var id: UUID { denunciaID }
 }
 
 struct BanimentoUsuario: Identifiable, Codable, Equatable, Sendable {
-    let id: UUID
+    let contaHash: String
     let banidoEm: Date
-    let motivo: String?
+
+    var id: String { contaHash }
 }

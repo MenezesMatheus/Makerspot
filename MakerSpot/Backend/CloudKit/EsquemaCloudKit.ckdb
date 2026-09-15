@@ -1,0 +1,117 @@
+DEFINE SCHEMA
+    CREATE ROLE ModeradorMakerSpot;
+
+    RECORD TYPE Usuario (
+        id STRING,
+        versaoEsquema INT64,
+        appleUserID STRING,
+        cloudKitUserRecordName STRING,
+        nome STRING,
+        sobrenome STRING,
+        fotoID STRING,
+        telefonePadrao STRING,
+        criadoEm TIMESTAMP,
+        atualizadoEm TIMESTAMP
+    );
+
+    RECORD TYPE FotoPerfil (
+        id STRING,
+        versaoEsquema INT64,
+        enviadaPorID STRING,
+        destinoTipo STRING,
+        destinoID STRING,
+        textoAlternativo STRING,
+        arquivo ASSET,
+        usuarioReferencia REFERENCE,
+        criadoEm TIMESTAMP
+    );
+
+    RECORD TYPE SpotSalvo (
+        id STRING SORTABLE,
+        versaoEsquema INT64,
+        usuarioID STRING QUERYABLE,
+        spotID STRING,
+        salvoEm TIMESTAMP SORTABLE,
+        ultimaVersaoConhecida INT64
+    );
+
+    RECORD TYPE Spot (
+        id STRING QUERYABLE SORTABLE,
+        versaoEsquema INT64,
+        proprietarioID STRING QUERYABLE,
+        nomePublicador STRING,
+        tipo STRING QUERYABLE,
+        nome STRING,
+        descricao STRING,
+        telefone STRING,
+        link STRING,
+        redesSociais BYTES,
+        fotoIDs LIST<STRING>,
+        estaAtivo INT64 QUERYABLE,
+        versao INT64,
+        logradouro STRING,
+        numero STRING,
+        complemento STRING,
+        bairro STRING,
+        cidade STRING,
+        estado STRING,
+        codigoPostal STRING,
+        codigoPais STRING,
+        localizacao LOCATION,
+        inicioEvento TIMESTAMP,
+        terminoEvento TIMESTAMP,
+        fusoHorarioID STRING,
+        funcionamento BYTES,
+        criadoEm TIMESTAMP,
+        atualizadoEm TIMESTAMP SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE, READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
+    RECORD TYPE FotoSpot (
+        id STRING,
+        versaoEsquema INT64,
+        enviadaPorID STRING QUERYABLE,
+        destinoTipo STRING,
+        destinoID STRING QUERYABLE,
+        textoAlternativo STRING,
+        arquivo ASSET,
+        spotReferencia REFERENCE,
+        criadoEm TIMESTAMP SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE, READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
+    RECORD TYPE Denuncia (
+        id STRING,
+        versaoEsquema INT64,
+        spotID STRING QUERYABLE,
+        spotReferencia REFERENCE,
+        texto STRING,
+        criadaEm TIMESTAMP SORTABLE,
+        GRANT READ TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
+    RECORD TYPE AnaliseDenuncia (
+        id STRING,
+        versaoEsquema INT64,
+        denunciaID STRING QUERYABLE,
+        denunciaReferencia REFERENCE,
+        status STRING QUERYABLE,
+        observacao STRING,
+        analisadaEm TIMESTAMP SORTABLE,
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
+    RECORD TYPE BanimentoUsuario (
+        id STRING,
+        versaoEsquema INT64,
+        contaHash STRING,
+        banidoEm TIMESTAMP,
+        GRANT READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );

@@ -1,5 +1,5 @@
 //
-//  ModeracaoFotos.swift .swift
+//  ModeracaoFotos.swift
 //  MakerSpot
 //
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
@@ -10,7 +10,8 @@ import SensitiveContentAnalysis
 
 enum ResultadoTriagemFoto: Equatable, Sendable {
     case bloqueadaPorConteudoSensivel
-    case encaminharParaModeracao
+    case conteudoSensivelNaoDetectado
+    case analiseLocalIndisponivel
 }
 
 enum ErroModeracaoFotos: LocalizedError {
@@ -36,14 +37,14 @@ final class ModeracaoFotos {
         }
 
         guard analisador.analysisPolicy != .disabled else {
-            return .encaminharParaModeracao
+            return .analiseLocalIndisponivel
         }
 
         do {
             let analise = try await analisador.analyzeImage(at: arquivoURL)
             return analise.isSensitive
                 ? .bloqueadaPorConteudoSensivel
-                : .encaminharParaModeracao
+                : .conteudoSensivelNaoDetectado
         } catch {
             throw ErroModeracaoFotos.falhaNaAnalise(descricao: error.localizedDescription)
         }
