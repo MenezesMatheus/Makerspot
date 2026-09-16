@@ -12,6 +12,7 @@ struct MakerSpotApp: App {
     var body: some Scene {
         WindowGroup {
             EmptyView()
+                .preferredColorScheme(.dark)
         }
     }
 }

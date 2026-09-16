@@ -14,13 +14,8 @@ final class PerfilViewModel {
     private(set) var usuario: Usuario?
     private(set) var fotoPerfil: FotoDisponivel?
     private(set) var estaCarregando = false
-    private(set) var estaSalvando = false
     private(set) var estaAlterandoFoto = false
     private(set) var mensagemDeErro: String?
-
-    var nome = ""
-    var sobrenome = ""
-    var telefonePadrao = ""
 
     private let usuarioCRUD: UsuarioCRUD
     private let fotoCRUD: FotoCRUD
@@ -44,38 +39,12 @@ final class PerfilViewModel {
         defer { estaCarregando = false }
 
         do {
-            let usuario = try await usuarioCRUD.buscarUsuarioAtual()
-            aplicar(usuario)
+            usuario = try await usuarioCRUD.buscarUsuarioAtual()
             fotoPerfil = try await fotoCRUD.buscarFotoPerfilAtual()
         } catch is CancellationError {
             return
         } catch {
             mensagemDeErro = error.localizedDescription
-        }
-    }
-
-    @discardableResult
-    func salvarPerfil() async -> Bool {
-        guard !estaSalvando else { return false }
-        estaSalvando = true
-        mensagemDeErro = nil
-        defer { estaSalvando = false }
-
-        do {
-            let atualizado = try await usuarioCRUD.atualizarPerfil(
-                DadosPerfilUsuario(
-                    nome: nome,
-                    sobrenome: sobrenome,
-                    telefonePadrao: telefonePadrao
-                )
-            )
-            aplicar(atualizado)
-            return true
-        } catch is CancellationError {
-            return false
-        } catch {
-            mensagemDeErro = error.localizedDescription
-            return false
         }
     }
 
@@ -87,7 +56,7 @@ final class PerfilViewModel {
 
         do {
             fotoPerfil = try await fotoCRUD.definirFotoPerfil(arquivoURL: arquivoURL)
-            aplicar(try await usuarioCRUD.buscarUsuarioAtual())
+            usuario = try await usuarioCRUD.buscarUsuarioAtual()
         } catch is CancellationError {
             return
         } catch {
@@ -104,7 +73,7 @@ final class PerfilViewModel {
         do {
             try await fotoCRUD.removerFotoPerfil()
             fotoPerfil = nil
-            aplicar(try await usuarioCRUD.buscarUsuarioAtual())
+            usuario = try await usuarioCRUD.buscarUsuarioAtual()
         } catch is CancellationError {
             return
         } catch {
@@ -130,10 +99,7 @@ final class PerfilViewModel {
         mensagemDeErro = nil
     }
 
-    private func aplicar(_ usuario: Usuario) {
+    func aplicarAtualizacao(_ usuario: Usuario) {
         self.usuario = usuario
-        nome = usuario.nome ?? ""
-        sobrenome = usuario.sobrenome ?? ""
-        telefonePadrao = usuario.telefonePadrao ?? ""
     }
 }
