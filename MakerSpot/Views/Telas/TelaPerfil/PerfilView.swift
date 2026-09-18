@@ -9,7 +9,15 @@ import SwiftUI
 
 struct PerfilView: View {
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ZStack {
+                   LinearGradient(
+                    colors: [.accent.opacity(0.3),
+                        .black.opacity(0.6), .black.opacity(0.6), .black.opacity(0.6), .black.opacity(0.7),  .black.opacity(0.8)],
+                       startPoint: .top,
+                       endPoint: .bottom
+                   )
+                   .ignoresSafeArea()
+        }
     }
 }
 
