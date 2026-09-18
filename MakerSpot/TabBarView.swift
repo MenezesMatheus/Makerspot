@@ -8,11 +8,34 @@
 import SwiftUI
 
 struct TabBarView: View {
+    
+    @State private var searchText = ""
+    
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        TabView {
+            
+            Tab("Spots", image: "SFspoticone" ) {
+                SpotsView()
+            }
+            
+            Tab("Salvos", systemImage: "bookmark") {
+                SalvosView()
+            }
+            
+            Tab("Perfil", systemImage: "person.fill") {
+                PerfilView()
+            }
+            
+            Tab(role: .search) {
+               BuscaView()
+            }
+        }
+        .searchable(text: $searchText)
+      
     }
 }
 
 #Preview {
-    TabBarView()
+  TabBarView()
+        .preferredColorScheme(.dark)
 }
