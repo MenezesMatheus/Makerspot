@@ -11,6 +11,7 @@ import Observation
 @MainActor
 @Observable
 final class MeusEventosViewModel {
+    let fotosSpots: FotosSpotsViewModel
     private(set) var eventos: [Spot] = []
     private(set) var estaCarregando = false
     private(set) var spotEmAlteracao: UUID?
@@ -18,18 +19,23 @@ final class MeusEventosViewModel {
 
     private let crud: SpotCRUD
 
-    init(crud: SpotCRUD) {
+    init(crud: SpotCRUD, fotosSpots: FotosSpotsViewModel) {
         self.crud = crud
+        self.fotosSpots = fotosSpots
     }
 
     convenience init(sessao: SessaoUsuario) {
-        self.init(crud: SpotCRUD(sessao: sessao))
+        self.init(
+            crud: SpotCRUD(sessao: sessao),
+            fotosSpots: FotosSpotsViewModel(sessao: sessao)
+        )
     }
 
     func carregar() async {
         guard !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
+        fotosSpots.limpar()
         defer { estaCarregando = false }
 
         do {
@@ -67,6 +73,7 @@ final class MeusEventosViewModel {
         do {
             try await crud.excluir(id: id)
             eventos.removeAll { $0.id == id }
+            fotosSpots.removerSpot(id)
             return true
         } catch is CancellationError {
             return false
