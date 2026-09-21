@@ -11,6 +11,7 @@ import Observation
 @MainActor
 @Observable
 final class SalvosViewModel {
+    let fotosSpots: FotosSpotsViewModel
     private(set) var itens: [ItemSpotSalvo] = []
     private(set) var estaCarregando = false
     private(set) var spotEmAlteracao: UUID?
@@ -22,16 +23,19 @@ final class SalvosViewModel {
 
     init(
         crud: SalvosCRUD,
-        notificacoes: Notificacoes
+        notificacoes: Notificacoes,
+        fotosSpots: FotosSpotsViewModel
     ) {
         self.crud = crud
         self.notificacoes = notificacoes
+        self.fotosSpots = fotosSpots
     }
 
     convenience init(sessao: SessaoUsuario) {
         self.init(
             crud: SalvosCRUD(sessao: sessao),
-            notificacoes: Notificacoes()
+            notificacoes: Notificacoes(),
+            fotosSpots: FotosSpotsViewModel(sessao: sessao)
         )
     }
 
@@ -39,6 +43,7 @@ final class SalvosViewModel {
         guard !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
+        fotosSpots.limpar()
         defer { estaCarregando = false }
 
         do {
@@ -64,6 +69,7 @@ final class SalvosViewModel {
         do {
             try await crud.dessalvar(spotID: spotID)
             itens.removeAll { $0.spot.id == spotID }
+            fotosSpots.removerSpot(spotID)
         } catch is CancellationError {
             return
         } catch {
@@ -104,6 +110,7 @@ final class SalvosViewModel {
                 }
             case .removido(let spotID):
                 itens.removeAll { $0.spot.id == spotID }
+                fotosSpots.removerSpot(spotID)
             }
         } catch is CancellationError {
             return

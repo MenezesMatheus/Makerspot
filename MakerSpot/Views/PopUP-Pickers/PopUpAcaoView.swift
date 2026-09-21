@@ -84,6 +84,8 @@ struct PopUpAcaoView: View {
 
                     GlassEffectContainer(spacing: 10) {
                         VStack(spacing: 10) {
+                            botaoDeAcao
+
                             Button(role: .cancel, action: cancelar) {
                                 Text(tituloCancelar)
                                     .font(.title3)
@@ -92,9 +94,6 @@ struct PopUpAcaoView: View {
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                             .controlSize(.large)
-                            .padding(.bottom, 4)
-
-                            botaoDeAcao
                         }
                     }
                 }

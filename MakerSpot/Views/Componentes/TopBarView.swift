@@ -8,16 +8,22 @@
 import SwiftUI
 
 enum TopBarType: Equatable {
+    case back
     case add
     case editDelete
     case confirm
+    case closeConfirm
     case reportSave
     case mainScreens
 }
 
 private extension TopBarType {
     var showsBackButton: Bool {
-        self != .mainScreens
+        self != .mainScreens && self != .closeConfirm
+    }
+
+    var showsTitle: Bool {
+        self == .back || self == .confirm
     }
 }
 
@@ -27,6 +33,8 @@ struct TopBar: ToolbarContent {
     var symbol: String?
     var action1: (() -> Void)?
     var action2: (() -> Void)?
+    var backAction: (() -> Void)?
+    var isActionDisabled = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -35,20 +43,24 @@ struct TopBar: ToolbarContent {
         title: String? = nil,
         symbol: String? = nil,
         action1: (() -> Void)? = nil,
-        action2: (() -> Void)? = nil
+        action2: (() -> Void)? = nil,
+        backAction: (() -> Void)? = nil,
+        isActionDisabled: Bool = false
     ) {
         self.type = type
         self.title = title
         self.symbol = symbol
         self.action1 = action1
         self.action2 = action2
+        self.backAction = backAction
+        self.isActionDisabled = isActionDisabled
     }
 
     var body: some ToolbarContent {
         if type.showsBackButton {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    dismiss()
+                    voltar()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
@@ -57,41 +69,53 @@ struct TopBar: ToolbarContent {
             }
         }
 
-        if type == .confirm, let title {
+        if type == .closeConfirm {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    voltar()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Cancelar")
+            }
+        }
+
+        if type.showsTitle, let title {
             ToolbarItem(placement: .principal) {
                 Text(title)
                     .font(.headline)
             }
         }
 
-        switch type {
-        case .add:
+        if type == .add {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     action1?()
                 } label: {
                     Image(systemName: "plus")
-                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(Color("AccentColor").opacity(0.75))
                 .accessibilityLabel("Adicionar")
             }
+        }
 
-        case .confirm:
-            ToolbarItem(placement: .topBarTrailing) {
+        if type == .confirm || type == .closeConfirm {
+            ToolbarItem(placement: .confirmationAction) {
                 Button {
                     action1?()
                 } label: {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.white)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(Color("AccentColor").opacity(0.75))
-                .accessibilityLabel("Confirmar")
+                .buttonStyle(.borderedProminent)
+                .tint(.accentColor)
+                .disabled(isActionDisabled)
+                .accessibilityLabel(
+                    type == .closeConfirm ? "Salvar alterações" : "Confirmar"
+                )
             }
+        }
 
-        case .editDelete:
+        if type == .editDelete {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     action1?()
@@ -107,8 +131,9 @@ struct TopBar: ToolbarContent {
                 }
                 .accessibilityLabel("Excluir")
             }
+        }
 
-        case .reportSave:
+        if type == .reportSave {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     action1?()
@@ -124,21 +149,25 @@ struct TopBar: ToolbarContent {
                 }
                 .accessibilityLabel("Salvar")
             }
+        }
 
-        case .mainScreens:
-            if let symbol {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        action1?()
-                    } label: {
-                        Image(systemName: symbol)
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(Color("AccentColor").opacity(0.75))
-                    .accessibilityLabel("Ação")
+        if type == .mainScreens, let symbol {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    action1?()
+                } label: {
+                    Image(systemName: symbol)
                 }
+                .accessibilityLabel("Ação")
             }
+        }
+    }
+
+    private func voltar() {
+        if let backAction {
+            backAction()
+        } else {
+            dismiss()
         }
     }
 }
