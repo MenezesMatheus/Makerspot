@@ -43,12 +43,13 @@ struct CardEvento: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            
+                
             // Imagem superior
             Image(imageEvento)
                 .resizable()
                 .scaledToFill()
-                .frame(height: 260)
+                .frame(width: 320, height: 273)
+//                .frame(height: 273)
                 .clipped()
 
             // retangulo escuro
@@ -57,6 +58,7 @@ struct CardEvento: View {
                     Text(titulo)
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.orange)
+                        .lineLimit(1)
 
                     Spacer()
 
@@ -93,6 +95,8 @@ struct CardEvento: View {
                         Text(localizacao)
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
+                            .lineLimit(1)
+                        
                     } icon: {
                         Image(systemName: "mappin.and.ellipse")
                             .foregroundColor(.orange)
@@ -104,13 +108,17 @@ struct CardEvento: View {
                         Text("\(data) \(hora)")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
+                            .lineLimit(1)
                     }
                 }
             }
+           .frame(width: 280)
             .padding(20)
             .background(Color(.systemGray6))
         }
+//        .frame(width: 491, height: 327)
         .clipShape(RoundedRectangle(cornerRadius: 24))
+
 
         
         .padding(.horizontal)
@@ -119,16 +127,18 @@ struct CardEvento: View {
 
 struct CardEvento_Previews: PreviewProvider {
     static var previews: some View {
-        CardEvento(
-                    imageEvento: "fablab",
-                    titulo: "Makerday",
-                    localizacao: "Recife, PE",
-                    data: "23.09",
-                    hora: "10h",
-                    estaSalvo: true,
-                    estaAlterandoSalvo: false,
-                    podeSalvar: true,
-                    aoAlternarSalvo: {}
-                )
+       // NavigationStack{
+            CardEvento(
+                imageEvento: "fablab",
+                titulo: "Makerday",
+                localizacao: "Recife, PE",
+                data: "23.09",
+                hora: "10h",
+                estaSalvo: true,
+                estaAlterandoSalvo: false,
+                podeSalvar: true,
+                aoAlternarSalvo: {}
+            )
+      //  }
     }
 }

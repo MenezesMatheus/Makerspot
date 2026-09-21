@@ -23,7 +23,7 @@ struct TabBarView: View {
             }
             
             Tab("Perfil", systemImage: "person.fill") {
-                PerfilView()
+                PerfilView(sessao: SessaoUsuario()) //COLOQUEI ISSO AQUI POR ENQUANTO, PRA CONSEGUIR CONSTRUIR A TELA. Matheus depois resolve o b.o la
             }
             
             Tab(role: .search) {
@@ -39,3 +39,4 @@ struct TabBarView: View {
   TabBarView()
         .preferredColorScheme(.dark)
 }
+
