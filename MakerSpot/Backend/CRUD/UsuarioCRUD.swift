@@ -188,6 +188,51 @@ final class UsuarioCRUD {
         try sessao.encerrar()
     }
 
+    func excluirConta() async throws {
+        let contexto = try await autorizacao.contextoAtual()
+        let usuarioID = contexto.usuario.id
+
+        let salvos = try await registrosDoUsuario(
+            tipo: .spotSalvo,
+            campo: CampoCloudKit.SpotSalvo.usuarioID,
+            usuarioID: usuarioID
+        )
+        let spots = try await registrosDoUsuario(
+            tipo: .spot,
+            campo: CampoCloudKit.Spot.proprietarioID,
+            usuarioID: usuarioID
+        )
+        let fotos = try await registrosDoUsuario(
+            tipo: .fotoSpot,
+            campo: CampoCloudKit.Foto.enviadaPorID,
+            usuarioID: usuarioID
+        )
+
+        guard spots.allSatisfy({
+            $0.creatorUserRecordID == contexto.identificadorCloudKit
+        }) else {
+            throw ErroCRUD.respostaInconsistente
+        }
+
+        try await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
+        try await excluir(fotos, tipo: .fotoSpot)
+        try await excluir(spots, tipo: .spot)
+        try await excluir(salvos, tipo: .spotSalvo)
+
+        if let fotoID = contexto.usuario.fotoID {
+            try await excluirSeExistir(
+                IdentificadorCloudKit.foto(fotoID),
+                tipo: .fotoPerfil
+            )
+        }
+
+        try await excluirSeExistir(
+            IdentificadorCloudKit.usuario(contexto.usuario.id),
+            tipo: .usuario
+        )
+        try sessao.encerrar()
+    }
+
     private func buscarUsuario(
         appleUserID: String,
         cloudKitUserRecordName: String
@@ -212,6 +257,42 @@ final class UsuarioCRUD {
             return (usuario, registro)
         } catch ErroCloudKit.registroNaoEncontrado {
             return nil
+        }
+    }
+
+    private func registrosDoUsuario(
+        tipo: TipoRegistroCloudKit,
+        campo: String,
+        usuarioID: UUID
+    ) async throws -> [CKRecord] {
+        let resultado = try await cliente.consultarTodos(
+            tipo: tipo,
+            predicado: NSPredicate(
+                format: "%K == %@",
+                campo,
+                usuarioID.uuidString.lowercased()
+            )
+        )
+        try ApoioCRUD.exigirSemFalhas(resultado.falhas)
+        return resultado.registros
+    }
+
+    private func excluir(
+        _ registros: [CKRecord],
+        tipo: TipoRegistroCloudKit
+    ) async throws {
+        for registro in registros {
+            try await excluirSeExistir(registro.recordID, tipo: tipo)
+        }
+    }
+
+    private func excluirSeExistir(
+        _ identificador: CKRecord.ID,
+        tipo: TipoRegistroCloudKit
+    ) async throws {
+        do {
+            try await cliente.excluir(identificador, tipo: tipo)
+        } catch ErroCloudKit.registroNaoEncontrado {
         }
     }
 
