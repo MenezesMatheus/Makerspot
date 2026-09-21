@@ -11,6 +11,7 @@ import Observation
 @MainActor
 @Observable
 final class SpotsViewModel {
+    let fotosSpots: FotosSpotsViewModel
     private(set) var spots: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
@@ -32,11 +33,13 @@ final class SpotsViewModel {
     init(
         crud: SpotCRUD,
         salvosCRUD: SalvosCRUD,
+        fotosSpots: FotosSpotsViewModel,
         usuarioAtualID: @escaping () -> UUID?,
         tamanhoDaPagina: Int = 30
     ) {
         self.crud = crud
         self.salvosCRUD = salvosCRUD
+        self.fotosSpots = fotosSpots
         self.usuarioAtualID = usuarioAtualID
         self.tamanhoDaPagina = max(1, tamanhoDaPagina)
     }
@@ -48,6 +51,7 @@ final class SpotsViewModel {
         self.init(
             crud: SpotCRUD(sessao: sessao),
             salvosCRUD: SalvosCRUD(sessao: sessao),
+            fotosSpots: FotosSpotsViewModel(sessao: sessao),
             usuarioAtualID: { [weak sessao] in sessao?.usuarioAtual?.id },
             tamanhoDaPagina: tamanhoDaPagina
         )
@@ -109,6 +113,7 @@ final class SpotsViewModel {
         redefinirPaginacao(tipo: nil)
         identificadoresSalvos = []
         spotsEmAlteracao = []
+        fotosSpots.limpar()
         podeCarregarMais = false
     }
 
