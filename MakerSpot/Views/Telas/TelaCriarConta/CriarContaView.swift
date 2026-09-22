@@ -115,11 +115,18 @@ struct CriarContaView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                TopBar(
-                    type: .back,
-                    title: "Criar Conta",
-                    backAction: voltar
-                )
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: voltar) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Voltar")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Criar Conta")
+                        .font(.headline)
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 Button(action: concluir) {

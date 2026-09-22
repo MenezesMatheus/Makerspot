@@ -135,12 +135,23 @@ struct SheetEditarPerfilView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarBackButtonHidden(true)
                 .toolbar {
-                    TopBar(
-                        type: .closeConfirm,
-                        action1: solicitarSalvamento,
-                        backAction: cancelar,
-                        isActionDisabled: !viewModel.podeSalvar || !viewModel.temAlteracoes
-                    )
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(action: cancelar) {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("Cancelar")
+                    }
+
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(action: solicitarSalvamento) {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.accentColor)
+                        .disabled(!viewModel.podeSalvar || !viewModel.temAlteracoes)
+                        .accessibilityLabel("Salvar alterações")
+                    }
                 }
             }
             .disabled(

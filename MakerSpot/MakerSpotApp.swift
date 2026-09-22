@@ -44,7 +44,7 @@ private struct FluxoPrincipalView: View {
                 )
 
             case .principal:
-                TabBarView()
+                TabBarView(sessao: sessao)
             }
         }
         .task {
