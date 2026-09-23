@@ -115,3 +115,16 @@ DEFINE SCHEMA
         GRANT READ TO "_icloud",
         GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
     );
+
+    RECORD TYPE NotificacaoModeracao (
+        id STRING,
+        versaoEsquema INT64,
+        destinatarioID STRING QUERYABLE,
+        tipoConteudo STRING,
+        conteudoID STRING,
+        nomeConteudo STRING,
+        motivo STRING,
+        criadoEm TIMESTAMP SORTABLE,
+        GRANT READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
