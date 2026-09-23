@@ -21,13 +21,11 @@ struct SheetEditarPerfilView: View {
     private let aoAtualizar: (Usuario) -> Void
     private let aoEncerrarSessao: () -> Void
     private let aoExcluirConta: () -> Void
-    private let carregarAoAparecer: Bool
 
     @Environment(\.dismiss) private var dismiss
 
     init(
         viewModel: EditarPerfilViewModel,
-        carregarAoAparecer: Bool = true,
         aoAtualizar: @escaping (Usuario) -> Void = { _ in },
         aoEncerrarSessao: @escaping () -> Void = { },
         aoExcluirConta: @escaping () -> Void = { }
@@ -36,20 +34,17 @@ struct SheetEditarPerfilView: View {
         self.aoAtualizar = aoAtualizar
         self.aoEncerrarSessao = aoEncerrarSessao
         self.aoExcluirConta = aoExcluirConta
-        self.carregarAoAparecer = carregarAoAparecer
     }
 
     init(
         usuario: Usuario,
         sessao: SessaoUsuario,
-        carregarAoAparecer: Bool = true,
         aoAtualizar: @escaping (Usuario) -> Void = { _ in },
         aoEncerrarSessao: @escaping () -> Void = { },
         aoExcluirConta: @escaping () -> Void = { }
     ) {
         self.init(
             viewModel: EditarPerfilViewModel(usuario: usuario, sessao: sessao),
-            carregarAoAparecer: carregarAoAparecer,
             aoAtualizar: aoAtualizar,
             aoEncerrarSessao: aoEncerrarSessao,
             aoExcluirConta: aoExcluirConta
@@ -201,9 +196,7 @@ struct SheetEditarPerfilView: View {
             }
         }
         .task {
-            if carregarAoAparecer {
-                await viewModel.carregarFoto()
-            }
+            await viewModel.carregarFoto()
         }
         .presentationDetents(
             [.medium, .large],
@@ -422,8 +415,8 @@ struct SheetEditarPerfilView: View {
 
 #Preview {
     @Previewable @State var estaApresentado = true
-    let sessao = SessaoUsuario()
     let agora = Date()
+    let sessao = SessaoUsuario()
     let usuario = Usuario(
         id: UUID(),
         appleUserID: "preview",
@@ -435,19 +428,11 @@ struct SheetEditarPerfilView: View {
         criadoEm: agora,
         atualizadoEm: agora
     )
-    let viewModel = EditarPerfilViewModel(
-        usuario: usuario,
-        crud: UsuarioCRUD(sessao: sessao),
-        fotoCRUD: FotoCRUD(sessao: sessao)
-    )
 
     Color(.systemBackground)
         .ignoresSafeArea()
         .sheet(isPresented: $estaApresentado) {
-            SheetEditarPerfilView(
-                viewModel: viewModel,
-                carregarAoAparecer: false
-            )
+            SheetEditarPerfilView(usuario: usuario, sessao: sessao)
         }
         .preferredColorScheme(.dark)
 }

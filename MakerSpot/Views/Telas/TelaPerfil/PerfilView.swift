@@ -9,11 +9,18 @@ import SwiftUI
 import PhotosUI
 
 struct PerfilView: View {
-    @State private var viewModel: PerfilViewModel
+    @Bindable private var viewModel: PerfilViewModel
     @State private var itemSelecionado: PhotosPickerItem?
+    @State private var mostrandoEdicaoPerfil = false
+    @State private var confirmarSaida = false
+    @State private var confirmarExclusao = false
+
+    init(viewModel: PerfilViewModel) {
+        self.viewModel = viewModel
+    }
 
     init(sessao: SessaoUsuario) {
-        _viewModel = State(initialValue: PerfilViewModel(sessao: sessao))
+        self.init(viewModel: PerfilViewModel(sessao: sessao))
     }
 
     var body: some View {
@@ -30,15 +37,7 @@ struct PerfilView: View {
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
-                .toolbar {
-                    TopBar(
-                        type: .mainScreens,
-                        symbol: "plus",
-                        action1: { print("Adicionar") }
-                    )
-                }
 
-                
                 ScrollView {
                     VStack {
                         // Foto + nome
@@ -54,6 +53,7 @@ struct PerfilView: View {
                                         let url = FileManager.default.temporaryDirectory
                                             .appendingPathComponent(UUID().uuidString + ".jpg")
                                         try? data.write(to: url)
+                                        defer { try? FileManager.default.removeItem(at: url) }
                                         await viewModel.definirFotoPerfil(arquivoURL: url)
                                     }
                                 }
@@ -69,57 +69,183 @@ struct PerfilView: View {
 
                             Spacer()
                         }
-                        .padding()
+                        .padding(.vertical, 16)
 
         
-                        NavigationLink(destination: MeusEventosView()) {
-                            HStack {
-                                Text("Meus eventos")
-                                    .font(.system(size: 34, weight: .bold))
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 28, weight: .medium))
-                                    .foregroundStyle(.white)
-                            }
-                            .padding()
-                        }
-                        .buttonStyle(.plain)
+                        secaoDoUsuario(
+                            titulo: "Meus eventos",
+                            spots: viewModel.eventos,
+                            destino: MeusEventosView()
+                        )
 
-    //aqui entra os cards de eventos
-
-                        NavigationLink(destination: MeusEspacosView()) {
-                            HStack {
-                                Text("Meus espaços")
-                                    .font(.system(size: 34, weight: .bold))
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 28, weight: .medium))
-                                    .foregroundStyle(.white)
-                            }
-                            .padding()
-                        }
-                        .buttonStyle(.plain)
-    //aqui entra os cards de espaços
+                        secaoDoUsuario(
+                            titulo: "Meus espaços",
+                            spots: viewModel.espacos,
+                            destino: MeusEspacosView()
+                        )
                     }
+                    .padding(.bottom, 32)
+                }
+                .contentMargins(.horizontal, 16, for: .scrollContent)
+
+                if viewModel.estaCarregando, viewModel.usuario == nil {
+                    ProgressView("Carregando perfil…")
+                }
+            }
+            .navigationTitle("Perfil")
+            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    menuAcoesPerfil
+                }
+            }
+            .disabled(confirmarSaida || confirmarExclusao || viewModel.estaExcluindoConta)
+            .overlay {
+                PopUpAcaoView(
+                    estaApresentado: $confirmarSaida,
+                    titulo: "Deseja encerrar sua sessão?",
+                    subtitulo: "Você precisará entrar novamente com sua conta Apple.",
+                    tituloAcao: "Encerrar Sessão",
+                    acaoDestrutiva: true,
+                    aoConfirmar: { viewModel.sair() }
+                )
+
+                PopUpAcaoView(
+                    estaApresentado: $confirmarExclusao,
+                    titulo: "Deseja excluir sua conta?",
+                    subtitulo: "Seu perfil, seus Spots e seus dados serão removidos definitivamente.",
+                    tituloAcao: "Excluir Conta",
+                    acaoDestrutiva: true,
+                    aoConfirmar: {
+                        Task { await viewModel.excluirConta() }
+                    }
+                )
+
+                if viewModel.estaExcluindoConta {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                    ProgressView("Excluindo conta…")
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+                }
+            }
+            .sheet(isPresented: $mostrandoEdicaoPerfil) {
+                if let editor = viewModel.criarEditorPerfil() {
+                    SheetEditarPerfilView(
+                        viewModel: editor,
+                        aoAtualizar: { usuario in
+                            viewModel.aplicarAtualizacao(usuario)
+                            Task { await viewModel.carregar() }
+                        },
+                        aoEncerrarSessao: viewModel.limparPerfil,
+                        aoExcluirConta: viewModel.limparPerfil
+                    )
+                }
+            }
+            .task {
+                await viewModel.carregar()
+            }
+            .refreshable {
+                await viewModel.carregar()
+            }
+            .alert(
+                "Erro",
+                isPresented: Binding(
+                    get: { viewModel.mensagemDeErro != nil },
+                    set: { _ in viewModel.limparErro() }
+                )
+            ) {
+                Button("OK") { viewModel.limparErro() }
+            } message: {
+                Text(viewModel.mensagemDeErro ?? "")
+            }
+        }
+    }
+
+    private var menuAcoesPerfil: some View {
+        Menu {
+            PickerView(acoes: [
+                PickerAcao(
+                    titulo: "Editar perfil",
+                    nomeDoSimbolo: "pencil",
+                    acao: { mostrandoEdicaoPerfil = true }
+                ),
+                PickerAcao(
+                    titulo: "Finalizar sessão",
+                    nomeDoSimbolo: "rectangle.portrait.and.arrow.right",
+                    acao: { confirmarSaida = true }
+                ),
+                PickerAcao(
+                    titulo: "Apagar conta",
+                    nomeDoSimbolo: "trash",
+                    papel: .destructive,
+                    acao: { confirmarExclusao = true }
+                )
+            ])
+            .disabled(viewModel.usuario == nil)
+        } label: {
+            Image(systemName: "ellipsis")
+                .foregroundStyle(.primary)
+        }
+        .buttonBorderShape(.circle)
+        .controlSize(.extraLarge)
+        .accessibilityLabel("Ações do perfil")
+    }
+
+    private func secaoDoUsuario<Destino: View>(
+        titulo: String,
+        spots: [Spot],
+        destino: Destino
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            NavigationLink(destination: destino) {
+                HStack {
+                    Text(titulo)
+                        .font(.title.bold())
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            ForEach(spots) { spot in
+                CardSimplesView(
+                    dados: CardSimplesDados(
+                        spot: spot,
+                        imagem: imagem(do: spot)
+                    ),
+                    modo: .proprietario(
+                        estaAtivo: spot.estaAtivo,
+                        estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        aoAlternar: { estaAtivo in
+                            Task {
+                                await viewModel.definirAtivo(
+                                    estaAtivo,
+                                    para: spot
+                                )
+                            }
+                        }
+                    ),
+                    aoSelecionar: {}
+                )
+                .task {
+                    await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
             }
         }
-        //MATHEUS VER ISSO AQUI 
-        //        .navigationTitle("Perfil")
-        .task {
-            await viewModel.carregar()
+    }
+
+    private func imagem(do spot: Spot) -> ImagemCardSimples {
+        guard let foto = viewModel.fotosSpots.fotoPrincipal(do: spot) else {
+            return .placeholder
         }
-        .alert(
-            "Erro",
-            isPresented: Binding(
-                get: { viewModel.mensagemDeErro != nil },
-                set: { _ in viewModel.limparErro() }
-            )
-        ) {
-            Button("OK") { viewModel.limparErro() }
-        } message: {
-            Text(viewModel.mensagemDeErro ?? "")
-        }
+        return .arquivo(foto.arquivoURL)
     }
 
     @ViewBuilder
@@ -154,8 +280,7 @@ struct PerfilView: View {
     }
 }
 
-
-
 #Preview {
     PerfilView(sessao: SessaoUsuario())
+        .preferredColorScheme(.dark)
 }
