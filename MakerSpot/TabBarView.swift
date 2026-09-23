@@ -8,34 +8,36 @@
 import SwiftUI
 
 struct TabBarView: View {
-    
-    @State private var searchText = ""
-    
+    @State private var spotsViewModel: SpotsViewModel
+    @State private var perfilViewModel: PerfilViewModel
+
+    init(sessao: SessaoUsuario) {
+        _spotsViewModel = State(initialValue: SpotsViewModel(sessao: sessao))
+        _perfilViewModel = State(initialValue: PerfilViewModel(sessao: sessao))
+    }
+
     var body: some View {
         TabView {
-            
-            Tab("Spots", image: "SFspoticone" ) {
-                SpotsView()
+            Tab("Spots", image: "SFspoticone") {
+                SpotsView(viewModel: spotsViewModel)
             }
-            
+
             Tab("Salvos", systemImage: "bookmark") {
                 SalvosView()
             }
-            
+
             Tab("Perfil", systemImage: "person.fill") {
-                PerfilView()
+                PerfilView(viewModel: perfilViewModel)
             }
-            
+
             Tab(role: .search) {
-               BuscaView()
+                BuscaView()
             }
         }
-        .searchable(text: $searchText)
-      
     }
 }
 
 #Preview {
-  TabBarView()
+    TabBarView(sessao: SessaoUsuario())
         .preferredColorScheme(.dark)
 }

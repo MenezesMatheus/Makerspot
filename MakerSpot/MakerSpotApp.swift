@@ -9,6 +9,9 @@ import SwiftUI
 
 @main
 struct MakerSpotApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegateNotificacoes.self)
+    private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             FluxoPrincipalView()
@@ -18,10 +21,15 @@ struct MakerSpotApp: App {
 }
 
 private struct FluxoPrincipalView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sessao = SessaoUsuario()
     @State private var etapa: Etapa = .restaurando
+    @State private var roteador = RoteadorNotificacoes.compartilhado
+    private let coordenadorNotificacoes = CoordenadorNotificacoes()
 
     var body: some View {
+        @Bindable var roteador = roteador
+
         Group {
             switch etapa {
             case .restaurando:
@@ -44,7 +52,7 @@ private struct FluxoPrincipalView: View {
                 )
 
             case .principal:
-                TabBarView()
+                TabBarView(sessao: sessao)
             }
         }
         .task {
@@ -60,10 +68,30 @@ private struct FluxoPrincipalView: View {
                 ? .criandoPerfil
                 : .principal
         }
+        .task(id: etapa) {
+            guard etapa == .principal else { return }
+            await coordenadorNotificacoes.configurar(sessao: sessao)
+        }
         .onChange(of: sessao.estaAutenticado) { _, estaAutenticado in
             if !estaAutenticado, etapa == .principal {
                 etapa = .login
             }
+        }
+        .onChange(of: scenePhase) { _, novaFase in
+            guard novaFase == .active, etapa == .principal else { return }
+            Task {
+                await coordenadorNotificacoes.configurar(sessao: sessao)
+            }
+        }
+        .alert(item: $roteador.alertaModeracao) { alerta in
+            Alert(
+                title: Text(alerta.titulo),
+                message: Text(alerta.mensagem),
+                primaryButton: .default(Text("Solicitar revisão")) {
+                    roteador.abrirEmailDeRevisao()
+                },
+                secondaryButton: .cancel(Text("Fechar"))
+            )
         }
         .environment(sessao)
     }

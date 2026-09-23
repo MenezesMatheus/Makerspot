@@ -530,6 +530,74 @@ enum ConversorRegistroCloudKit {
         )
     }
 
+    // Notificação de moderação
+
+    static func registro(
+        de notificacao: NotificacaoModeracao,
+        existente: CKRecord? = nil
+    ) throws -> CKRecord {
+        let registro = try prepararRegistro(
+            tipo: .notificacaoModeracao,
+            identificador: IdentificadorCloudKit.notificacaoModeracao(notificacao.id),
+            existente: existente
+        )
+
+        registro[CampoCloudKit.id] = texto(notificacao.id)
+        registro[CampoCloudKit.NotificacaoModeracao.destinatarioID] = texto(
+            notificacao.destinatarioID
+        )
+        registro[CampoCloudKit.NotificacaoModeracao.tipoConteudo] =
+            notificacao.tipoConteudo.rawValue
+        registro[CampoCloudKit.NotificacaoModeracao.conteudoID] =
+            notificacao.conteudoID.map { texto($0) }
+        registro[CampoCloudKit.NotificacaoModeracao.nomeConteudo] =
+            notificacao.nomeConteudo
+        registro[CampoCloudKit.NotificacaoModeracao.motivo] = notificacao.motivo
+        registro[CampoCloudKit.criadoEm] = notificacao.criadaEm
+        return registro
+    }
+
+    static func notificacaoModeracao(
+        de registro: CKRecord
+    ) throws -> NotificacaoModeracao {
+        try verificarTipo(.notificacaoModeracao, do: registro)
+        let tipoTexto: String = try ler(
+            CampoCloudKit.NotificacaoModeracao.tipoConteudo,
+            do: registro
+        )
+        guard let tipo = TipoConteudoModerado(rawValue: tipoTexto) else {
+            throw campoInvalido(
+                CampoCloudKit.NotificacaoModeracao.tipoConteudo,
+                do: registro
+            )
+        }
+
+        return NotificacaoModeracao(
+            id: try idValidado(
+                do: registro,
+                identificador: { IdentificadorCloudKit.notificacaoModeracao($0) }
+            ),
+            destinatarioID: try uuid(
+                CampoCloudKit.NotificacaoModeracao.destinatarioID,
+                do: registro
+            ),
+            tipoConteudo: tipo,
+            conteudoID: try uuidOpcional(
+                CampoCloudKit.NotificacaoModeracao.conteudoID,
+                do: registro
+            ),
+            nomeConteudo: try lerOpcional(
+                CampoCloudKit.NotificacaoModeracao.nomeConteudo,
+                do: registro
+            ),
+            motivo: try ler(
+                CampoCloudKit.NotificacaoModeracao.motivo,
+                do: registro
+            ),
+            criadaEm: try ler(CampoCloudKit.criadoEm, do: registro)
+        )
+    }
+
     // Apoio à conversão
 
     private static func prepararRegistro(

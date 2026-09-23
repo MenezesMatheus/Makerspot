@@ -46,9 +46,10 @@ struct PopUpAcaoView: View {
     var body: some View {
         if estaApresentado {
             ZStack {
-                Color.black.opacity(0.42)
+                Color.black.opacity(0.58)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
+                    .onTapGesture(perform: cancelar)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: possuiDetalhes ? 28 : 40) {
@@ -61,7 +62,7 @@ struct PopUpAcaoView: View {
                         if let subtitulo, !subtitulo.isEmpty {
                             Text(subtitulo)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.primary.opacity(0.72))
                         }
 
                         if let alteracoes, !alteracoes.isEmpty {
@@ -84,16 +85,13 @@ struct PopUpAcaoView: View {
 
                     GlassEffectContainer(spacing: 10) {
                         VStack(spacing: 10) {
-                            botaoDeAcao
-
-                            Button(role: .cancel, action: cancelar) {
-                                Text(tituloCancelar)
-                                    .font(.title3)
-                                    .frame(maxWidth: .infinity)
+                            if acaoDestrutiva {
+                                botaoCancelar
+                                botaoDeAcao
+                            } else {
+                                botaoDeAcao
+                                botaoCancelar
                             }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.capsule)
-                            .controlSize(.large)
                         }
                     }
                 }
@@ -101,6 +99,10 @@ struct PopUpAcaoView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 28)
                 .frame(maxWidth: 360)
+                .background(
+                    Color(.secondarySystemBackground).opacity(0.96),
+                    in: RoundedRectangle(cornerRadius: 40, style: .continuous)
+                )
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 40, style: .continuous))
                 .padding(.horizontal, 28)
             }
@@ -113,6 +115,17 @@ struct PopUpAcaoView: View {
 
     private var possuiDetalhes: Bool {
         !(subtitulo?.isEmpty ?? true) || !(alteracoes?.isEmpty ?? true)
+    }
+
+    private var botaoCancelar: some View {
+        Button(role: .cancel, action: cancelar) {
+            Text(tituloCancelar)
+                .font(.title3)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
     }
 
     @ViewBuilder
