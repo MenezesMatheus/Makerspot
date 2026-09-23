@@ -20,6 +20,7 @@ struct MakerSpotApp: App {
 private struct FluxoPrincipalView: View {
     @State private var sessao = SessaoUsuario()
     @State private var etapa: Etapa = .restaurando
+    
 
     var body: some View {
         Group {

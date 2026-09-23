@@ -9,10 +9,21 @@ import SwiftUI
 
 struct OnboardingView: View {
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ZStack {
+            Onboarding1(
+                imagem: "ONBOARDING 1",
+                texto1: "Bem-vindo \nao Makerspot",
+                texto2: "Encontre espaços e \neventos para criar e \nconectar."
+            )
+//            Onboarding2(
+//                imagem: "ONBOARDING 2",
+//                texto1: "Compartilhe, \nColabore, \nTransforme",
+//                texto2: "Ofereça experiências\ne fortaleça\na comunidade maker")
+            
+    }
     }
 }
-
 #Preview {
     OnboardingView()
 }
+
