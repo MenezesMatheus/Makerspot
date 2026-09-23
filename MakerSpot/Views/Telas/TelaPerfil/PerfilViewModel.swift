@@ -18,6 +18,7 @@ final class PerfilViewModel {
     private(set) var espacos: [Spot] = []
     private(set) var estaCarregando = false
     private(set) var estaAlterandoFoto = false
+    private(set) var estaExcluindoConta = false
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
 
@@ -44,6 +45,16 @@ final class PerfilViewModel {
             fotoCRUD: fotoCRUD,
             spotCRUD: SpotCRUD(sessao: sessao),
             fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD)
+        )
+        usuario = sessao.usuarioAtual
+    }
+
+    func criarEditorPerfil() -> EditarPerfilViewModel? {
+        guard let usuario else { return nil }
+        return EditarPerfilViewModel(
+            usuario: usuario,
+            crud: usuarioCRUD,
+            fotoCRUD: fotoCRUD
         )
     }
 
@@ -154,16 +165,36 @@ final class PerfilViewModel {
         mensagemDeErro = nil
         do {
             try usuarioCRUD.encerrarSessao()
-            usuario = nil
-            fotoPerfil = nil
-            eventos = []
-            espacos = []
-            fotosSpots.limpar()
+            limparPerfil()
             return true
         } catch {
             mensagemDeErro = error.localizedDescription
             return false
         }
+    }
+
+    func excluirConta() async {
+        guard !estaExcluindoConta else { return }
+        estaExcluindoConta = true
+        mensagemDeErro = nil
+        defer { estaExcluindoConta = false }
+
+        do {
+            try await usuarioCRUD.excluirConta()
+            limparPerfil()
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
+    }
+
+    func limparPerfil() {
+        usuario = nil
+        fotoPerfil = nil
+        eventos = []
+        espacos = []
+        fotosSpots.limpar()
     }
 
     func limparErro() {

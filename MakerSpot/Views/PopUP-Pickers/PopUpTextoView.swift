@@ -28,7 +28,7 @@ struct PopUpTextoView: View {
     var body: some View {
         if estaApresentado {
             ZStack {
-                Color.black.opacity(0.42)
+                Color.black.opacity(0.58)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture(perform: fechar)
@@ -44,7 +44,7 @@ struct PopUpTextoView: View {
                     if let subtitulo, !subtitulo.isEmpty {
                         Text(subtitulo)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.primary.opacity(0.72))
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -52,6 +52,10 @@ struct PopUpTextoView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 28)
                 .frame(maxWidth: 360)
+                .background(
+                    Color(.secondarySystemBackground).opacity(0.96),
+                    in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                )
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .onTapGesture { }
