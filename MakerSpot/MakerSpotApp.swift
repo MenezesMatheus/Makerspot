@@ -9,6 +9,9 @@ import SwiftUI
 
 @main
 struct MakerSpotApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegateNotificacoes.self)
+    private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             FluxoPrincipalView()
@@ -18,13 +21,28 @@ struct MakerSpotApp: App {
 }
 
 private struct FluxoPrincipalView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sessao = SessaoUsuario()
-    @State private var etapa: Etapa = .restaurando
-    
+    @State private var etapa: Etapa
+    @State private var roteador = RoteadorNotificacoes.compartilhado
+    @AppStorage("shouldShowOnBoarding") private var shouldShowOnBoarding: Bool = true
+    private let coordenadorNotificacoes = CoordenadorNotificacoes()
+
+    init() {
+        _etapa = State(initialValue: UserDefaults.standard.bool(forKey: "shouldShowOnBoarding") == false ? .restaurando : .onboarding)
+    }
 
     var body: some View {
+        @Bindable var roteador = roteador
+
         Group {
             switch etapa {
+            case .onboarding:
+                tabview {
+                    shouldShowOnBoarding = false
+                    etapa = .restaurando
+                }
+
             case .restaurando:
                 ZStack {
                     Color(.systemBackground)
@@ -45,10 +63,10 @@ private struct FluxoPrincipalView: View {
                 )
 
             case .principal:
-                TabBarView()
+                TabBarView(sessao: sessao)
             }
         }
-        .task {
+        .task(id: etapa) {
             guard etapa == .restaurando else { return }
             let login = LoginViewModel(sessao: sessao)
             guard await login.restaurarSessao(),
@@ -61,10 +79,30 @@ private struct FluxoPrincipalView: View {
                 ? .criandoPerfil
                 : .principal
         }
+        .task(id: etapa) {
+            guard etapa == .principal else { return }
+            await coordenadorNotificacoes.configurar(sessao: sessao)
+        }
         .onChange(of: sessao.estaAutenticado) { _, estaAutenticado in
             if !estaAutenticado, etapa == .principal {
                 etapa = .login
             }
+        }
+        .onChange(of: scenePhase) { _, novaFase in
+            guard novaFase == .active, etapa == .principal else { return }
+            Task {
+                await coordenadorNotificacoes.configurar(sessao: sessao)
+            }
+        }
+        .alert(item: $roteador.alertaModeracao) { alerta in
+            Alert(
+                title: Text(alerta.titulo),
+                message: Text(alerta.mensagem),
+                primaryButton: .default(Text("Solicitar revisão")) {
+                    roteador.abrirEmailDeRevisao()
+                },
+                secondaryButton: .cancel(Text("Fechar"))
+            )
         }
         .environment(sessao)
     }
@@ -75,6 +113,7 @@ private struct FluxoPrincipalView: View {
     }
 
     private enum Etapa: Equatable {
+        case onboarding
         case restaurando
         case login
         case criandoPerfil
