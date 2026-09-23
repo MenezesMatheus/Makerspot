@@ -23,12 +23,14 @@ enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
     case denuncia = "Denuncia"
     case analiseDenuncia = "AnaliseDenuncia"
     case banimentoUsuario = "BanimentoUsuario"
+    case notificacaoModeracao = "NotificacaoModeracao"
 
     var escopo: EscopoBancoCloudKit {
         switch self {
         case .usuario, .fotoPerfil, .spotSalvo:
             return .privado
-        case .spot, .fotoSpot, .denuncia, .analiseDenuncia, .banimentoUsuario:
+        case .spot, .fotoSpot, .denuncia, .analiseDenuncia, .banimentoUsuario,
+             .notificacaoModeracao:
             return .publico
         }
     }
@@ -114,6 +116,14 @@ enum CampoCloudKit {
         static let contaHash = "contaHash"
         static let banidoEm = "banidoEm"
     }
+
+    enum NotificacaoModeracao {
+        static let destinatarioID = "destinatarioID"
+        static let tipoConteudo = "tipoConteudo"
+        static let conteudoID = "conteudoID"
+        static let nomeConteudo = "nomeConteudo"
+        static let motivo = "motivo"
+    }
 }
 
 enum VersaoEsquemaCloudKit {
@@ -142,6 +152,7 @@ enum IdentificadorContaCloudKit {
 enum IdentificadorCloudKit {
     private static let prefixoBaseAssinaturaSpot = "alteracoes_spot_"
     private static let prefixoAssinaturaSpot = "\(prefixoBaseAssinaturaSpot)v1_"
+    private static let prefixoAssinaturaModeracao = "moderacao_usuario_v1_"
 
     private static func texto(_ id: UUID) -> String {
         id.uuidString.lowercased()
@@ -181,8 +192,22 @@ enum IdentificadorCloudKit {
         CKRecord.ID(recordName: "banimento_usuario_\(contaHash)")
     }
 
+    static func notificacaoModeracao(_ id: UUID) -> CKRecord.ID {
+        CKRecord.ID(recordName: "notificacao_moderacao_\(texto(id))")
+    }
+
     static func assinaturaSpot(_ id: UUID) -> CKSubscription.ID {
         "\(prefixoAssinaturaSpot)\(texto(id))"
+    }
+
+    static func assinaturaModeracao(_ usuarioID: UUID) -> CKSubscription.ID {
+        "\(prefixoAssinaturaModeracao)\(texto(usuarioID))"
+    }
+
+    static func usuarioDaAssinaturaModeracao(
+        _ identificador: CKSubscription.ID
+    ) -> UUID? {
+        uuid(de: identificador, removendo: prefixoAssinaturaModeracao)
     }
 
     static func spotDaAssinatura(_ identificador: CKSubscription.ID) -> UUID? {

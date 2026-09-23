@@ -32,14 +32,17 @@ final class SpotCRUD {
     private let cliente: ClienteCloudKit
     private let localizacao: ServicoLocalizacao
     private let autorizacao: AutorizacaoCRUD
+    private let notificacoes: Notificacoes
 
     init(
         cliente: ClienteCloudKit = ClienteCloudKit(),
         sessao: SessaoUsuario,
-        localizacao: ServicoLocalizacao = ServicoLocalizacao()
+        localizacao: ServicoLocalizacao = ServicoLocalizacao(),
+        notificacoes: Notificacoes = Notificacoes()
     ) {
         self.cliente = cliente
         self.localizacao = localizacao
+        self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
     }
 
@@ -70,9 +73,14 @@ final class SpotCRUD {
         )
 
         let registro = try ConversorRegistroCloudKit.registro(de: spot)
-        return try ConversorRegistroCloudKit.spot(
+        let criado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(registro)
         )
+        try? await notificacoes.agendarLembretes(
+            para: criado,
+            papel: .organizador
+        )
+        return criado
     }
 
     func buscar(id: UUID) async throws -> Spot {
@@ -189,9 +197,14 @@ final class SpotCRUD {
             de: spot,
             existente: registroAtual
         )
-        return try ConversorRegistroCloudKit.spot(
+        let editado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(alterado)
         )
+        try? await notificacoes.agendarLembretes(
+            para: editado,
+            papel: .organizador
+        )
+        return editado
     }
 
     func definirAtivo(_ estaAtivo: Bool, para id: UUID) async throws -> Spot {
@@ -214,9 +227,14 @@ final class SpotCRUD {
             de: spot,
             existente: registroAtual
         )
-        return try ConversorRegistroCloudKit.spot(
+        let atualizado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(alterado)
         )
+        try? await notificacoes.agendarLembretes(
+            para: atualizado,
+            papel: .organizador
+        )
+        return atualizado
     }
 
     func excluir(id: UUID) async throws {
@@ -232,6 +250,10 @@ final class SpotCRUD {
             contexto: contexto
         )
         try await cliente.excluir(registro.recordID, tipo: .spot)
+        notificacoes.cancelarLembretes(
+            spotID: spot.id,
+            papel: .organizador
+        )
     }
 
     private func predicadoListagem(

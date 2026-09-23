@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreLocation
 import MapKit
 
 enum ErroLocalizacao: LocalizedError {
@@ -89,5 +90,80 @@ final class ServicoLocalizacao {
         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
         .joined(separator: ", ")
+    }
+}
+
+@MainActor
+final class ServicoLocalizacaoUsuario: NSObject, CLLocationManagerDelegate {
+    private let gerenciador = CLLocationManager()
+    private var continuacao: CheckedContinuation<Coordenadas?, Never>?
+
+    override init() {
+        super.init()
+        gerenciador.delegate = self
+        gerenciador.desiredAccuracy = kCLLocationAccuracyKilometer
+    }
+
+    func obterCoordenadas() async -> Coordenadas? {
+        guard CLLocationManager.locationServicesEnabled() else { return nil }
+
+        if let localizacao = gerenciador.location {
+            return Self.coordenadas(de: localizacao)
+        }
+
+        guard continuacao == nil else { return nil }
+
+        return await withCheckedContinuation { continuacao in
+            self.continuacao = continuacao
+
+            switch gerenciador.authorizationStatus {
+            case .notDetermined:
+                gerenciador.requestWhenInUseAuthorization()
+            case .authorizedAlways, .authorizedWhenInUse:
+                gerenciador.requestLocation()
+            case .denied, .restricted:
+                concluir(com: nil)
+            @unknown default:
+                concluir(com: nil)
+            }
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard continuacao != nil else { return }
+
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        case .denied, .restricted:
+            concluir(com: nil)
+        case .notDetermined:
+            break
+        @unknown default:
+            concluir(com: nil)
+        }
+    }
+
+    func locationManager(
+        _ manager: CLLocationManager,
+        didUpdateLocations locations: [CLLocation]
+    ) {
+        concluir(com: locations.last.map(Self.coordenadas(de:)))
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        concluir(com: nil)
+    }
+
+    private func concluir(com coordenadas: Coordenadas?) {
+        continuacao?.resume(returning: coordenadas)
+        continuacao = nil
+    }
+
+    private static func coordenadas(de localizacao: CLLocation) -> Coordenadas {
+        Coordenadas(
+            latitude: localizacao.coordinate.latitude,
+            longitude: localizacao.coordinate.longitude
+        )
     }
 }

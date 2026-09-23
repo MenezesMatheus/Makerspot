@@ -16,31 +16,26 @@ struct CriarContaView: View {
 
     private let aoConcluir: (Usuario) -> Void
     private let aoVoltar: (() -> Void)?
-    private let carregarAoAparecer: Bool
 
     @Environment(\.dismiss) private var dismiss
 
     init(
         viewModel: CriarContaViewModel,
-        carregarAoAparecer: Bool = true,
         aoConcluir: @escaping (Usuario) -> Void = { _ in },
         aoVoltar: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.aoConcluir = aoConcluir
         self.aoVoltar = aoVoltar
-        self.carregarAoAparecer = carregarAoAparecer
     }
 
     init(
         sessao: SessaoUsuario,
-        carregarAoAparecer: Bool = true,
         aoConcluir: @escaping (Usuario) -> Void = { _ in },
         aoVoltar: (() -> Void)? = nil
     ) {
         self.init(
             viewModel: CriarContaViewModel(sessao: sessao),
-            carregarAoAparecer: carregarAoAparecer,
             aoConcluir: aoConcluir,
             aoVoltar: aoVoltar
         )
@@ -115,11 +110,18 @@ struct CriarContaView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
-                TopBar(
-                    type: .back,
-                    title: "Criar Conta",
-                    backAction: voltar
-                )
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: voltar) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Voltar")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Criar Conta")
+                        .font(.headline)
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 Button(action: concluir) {
@@ -138,9 +140,7 @@ struct CriarContaView: View {
             }
         }
         .task {
-            if carregarAoAparecer {
-                await viewModel.carregar()
-            }
+            await viewModel.carregar()
         }
         .alert(
             "Não foi possível criar o perfil",
@@ -310,28 +310,6 @@ struct CriarContaView: View {
 }
 
 #Preview {
-    let sessao = SessaoUsuario()
-    let agora = Date()
-    let usuario = Usuario(
-        id: UUID(),
-        appleUserID: "preview",
-        cloudKitUserRecordName: "preview",
-        nome: "Adalino",
-        sobrenome: "da Silva",
-        fotoID: nil,
-        telefonePadrao: "+55 81 99002-8922",
-        criadoEm: agora,
-        atualizadoEm: agora
-    )
-    let viewModel = CriarContaViewModel(
-        usuarioInicial: usuario,
-        crud: UsuarioCRUD(sessao: sessao),
-        fotoCRUD: FotoCRUD(sessao: sessao)
-    )
-
-    CriarContaView(
-        viewModel: viewModel,
-        carregarAoAparecer: false
-    )
+    CriarContaView(sessao: SessaoUsuario())
         .preferredColorScheme(.dark)
 }
