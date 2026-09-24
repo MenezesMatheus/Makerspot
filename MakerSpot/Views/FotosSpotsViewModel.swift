@@ -54,7 +54,7 @@ final class FotosSpotsViewModel {
         defer { spotsEmCarregamento.remove(spot.id) }
 
         do {
-            if let foto = try await fotoCRUD.buscarFotos(para: spot).first {
+            if let foto = try await fotoCRUD.buscarFotoPrincipal(para: spot) {
                 fotosPrincipais[spot.id] = foto
             } else {
                 spotsSemFoto.insert(spot.id)

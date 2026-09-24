@@ -14,14 +14,8 @@ enum ValidadorSpotCRUD {
             dados.nome,
             nome: "o nome do Spot"
         )
-        resultado.descricao = try ApoioCRUD.textoObrigatorio(
-            dados.descricao,
-            nome: "a descrição do Spot"
-        )
-        resultado.telefone = try ApoioCRUD.textoObrigatorio(
-            dados.telefone,
-            nome: "o telefone do Spot"
-        )
+        resultado.descricao = ApoioCRUD.textoOpcional(dados.descricao) ?? ""
+        resultado.telefone = ApoioCRUD.textoOpcional(dados.telefone) ?? ""
         resultado.endereco = try normalizar(dados.endereco)
         try ApoioCRUD.validarURLWeb(dados.link, nome: "divulgação")
         resultado.redesSociais = try dados.redesSociais.map { rede in
@@ -45,8 +39,7 @@ enum ValidadorSpotCRUD {
               spot.criadoEm <= spot.atualizadoEm else {
             throw ErroCRUD.respostaInconsistente
         }
-        guard spot.fotoIDs.count <= 10,
-              Set(spot.fotoIDs).count == spot.fotoIDs.count else {
+        guard Set(spot.fotoIDs).count == spot.fotoIDs.count else {
             throw ErroCRUD.respostaInconsistente
         }
         guard spot.localizacao.coordenadas.latitude.isFinite,
@@ -67,6 +60,10 @@ enum ValidadorSpotCRUD {
                 detalhes: spot.detalhes
             )
         )
+    }
+
+    static func validarFuncionamento(_ funcionamento: FuncionamentoSemanal) throws {
+        try validar(.espaco(Espaco(funcionamento: funcionamento)))
     }
 
     private static func normalizar(_ endereco: Endereco) throws -> Endereco {

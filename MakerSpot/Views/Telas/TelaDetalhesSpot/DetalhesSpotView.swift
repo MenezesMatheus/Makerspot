@@ -165,11 +165,13 @@ struct DetalhesSpotView: View {
                         )
                     }
 
-                    LinhaInformacaoSpot(
-                        icone: "phone",
-                        texto: spot.telefone,
-                        cor: corDestaque
-                    )
+                    if !spot.telefone.isEmpty {
+                        LinhaInformacaoSpot(
+                            icone: "phone",
+                            texto: spot.telefone,
+                            cor: corDestaque
+                        )
+                    }
 
                     LinhaInformacaoSpot(
                         icone: "mappin.and.ellipse",
