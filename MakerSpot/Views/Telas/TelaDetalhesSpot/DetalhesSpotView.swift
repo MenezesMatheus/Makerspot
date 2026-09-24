@@ -7,13 +7,108 @@ import SwiftUI
 
 struct DetalhesSpotView: View {
 
-    let spot: Spot
+    @Environment(\.dismiss) private var dismiss
+    @State private var viewModel: DetalhesSpotViewModel
+    @State private var viewModelDenuncia: ReportarSpotViewModel?
+    @State private var mostrarEditor = false
+    @State private var confirmarExclusao = false
+    @State private var iniciouCarregamento = false
 
-    @State private var mostrarSheetReportar = false
+    init(spotID: UUID, sessao: SessaoUsuario) {
+        _viewModel = State(
+            initialValue: DetalhesSpotViewModel(
+                spotID: spotID,
+                sessao: sessao
+            )
+        )
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        Group {
+            if let spot = viewModel.spot {
+                conteudo(spot)
+            } else if viewModel.estaCarregando || !iniciouCarregamento {
+                ProgressView("Carregando Spot…")
+            } else {
+                ContentUnavailableView(
+                    "Spot indisponível",
+                    systemImage: "mappin.slash",
+                    description: Text("Não foi possível carregar este Spot.")
+                )
+            }
+        }
+        .toolbar { barraDeAcoes }
+        .sheet(item: $viewModelDenuncia) { denuncia in
+            SheetReportarView(viewModel: denuncia)
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(isPresented: $mostrarEditor) {
+            EditarSpotView()
+        }
+        .disabled(confirmarExclusao || viewModel.estaExcluindo)
+        .overlay {
+            PopUpAcaoView(
+                estaApresentado: $confirmarExclusao,
+                titulo: "Deseja excluir este Spot?",
+                subtitulo: "Esta ação não pode ser desfeita.",
+                tituloAcao: "Excluir Spot",
+                acaoDestrutiva: true,
+                aoConfirmar: {
+                    Task {
+                        if await viewModel.excluir() {
+                            dismiss()
+                        }
+                    }
+                }
+            )
+
+            if viewModel.estaExcluindo {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                ProgressView("Excluindo Spot…")
+                    .padding(24)
+                    .background(
+                        .regularMaterial,
+                        in: RoundedRectangle(cornerRadius: 20)
+                    )
+            }
+        }
+        .task {
+            iniciouCarregamento = true
+            await viewModel.carregar()
+        }
+        .alert(
+            "Não foi possível concluir",
+            isPresented: Binding(
+                get: { viewModel.mensagemDeErro != nil },
+                set: { _ in viewModel.limparErro() }
+            )
+        ) {
+            Button("OK") { viewModel.limparErro() }
+        } message: {
+            Text(viewModel.mensagemDeErro ?? "")
+        }
+    }
+
+    private func conteudo(_ spot: Spot) -> some View {
+        ZStack(alignment: .top) {
+            LinearGradient(
+                colors: [
+                    corDestaque(para: spot).opacity(0.4),
+                    .black,
+                    .black.opacity(0.6),
+                    .black.opacity(0.6),
+                    .black.opacity(0.7),
+                    .black.opacity(0.8)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
 
                 // MARK: - Título
 
@@ -27,7 +122,8 @@ struct DetalhesSpotView: View {
                 // MARK: - Fotos
 
                 CarrosselFotosSpot(
-                    quantidadeFotos: max(spot.fotoIDs.count, 3)
+                    fotos: viewModel.fotos,
+                    estaCarregando: viewModel.estaCarregando
                 )
                 .padding(.bottom, 24)
 
@@ -53,9 +149,7 @@ struct DetalhesSpotView: View {
                 // MARK: - Informações
 
                 VStack(alignment: .leading, spacing: 10) {
-
                     switch spot.detalhes {
-
                     case .evento(let evento):
                         LinhaInformacaoSpot(
                             icone: "calendar",
@@ -79,7 +173,7 @@ struct DetalhesSpotView: View {
 
                     LinhaInformacaoSpot(
                         icone: "mappin.and.ellipse",
-                        texto: textoEndereco,
+                        texto: textoEndereco(spot),
                         cor: corDestaque
                     )
                 }
@@ -89,7 +183,6 @@ struct DetalhesSpotView: View {
                 // MARK: - Publicador
 
                 HStack(spacing: 12) {
-
                     Circle()
                         .fill(.quaternary)
                         .frame(width: 44, height: 44)
@@ -124,54 +217,78 @@ struct DetalhesSpotView: View {
                     .padding(.horizontal, 32)
                     .padding(.top, 18)
                     .padding(.bottom, 32)
+                }
             }
         }
-        .navigationBarBackButtonHidden(true)
-
-        // MARK: - TopBar
-
-        .toolbar {
-            TopBar(
-                type: .reportSave,
-                action1: {
-                    mostrarSheetReportar = true
-                },
-                action2: {
-                    print("Salvar Spot")
-                }
-            )
-        }
-
-        // MARK: - Sheet de denúncia
-
-        .sheet(isPresented: $mostrarSheetReportar) {
-            SheetReportarView()
-                .presentationDetents([.height(340)])
-                .presentationDragIndicator(.visible)
-        }
     }
 
+    @ToolbarContentBuilder
+    private var barraDeAcoes: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if viewModel.spot != nil {
+                if viewModel.ehProprietario {
+                    Button("Editar Spot", systemImage: "pencil") {
+                        mostrarEditor = true
+                    }
+                    .labelStyle(.iconOnly)
 
-    // MARK: - Cor
+                    Button(
+                        "Excluir Spot",
+                        systemImage: "trash",
+                        role: .destructive
+                    ) {
+                        confirmarExclusao = true
+                    }
+                    .labelStyle(.iconOnly)
+                } else {
+                    Button(
+                        "Denunciar Spot",
+                        systemImage: "exclamationmark.bubble"
+                    ) {
+                        viewModelDenuncia = viewModel.criarDenuncia()
+                    }
+                    .labelStyle(.iconOnly)
+
+                    Button {
+                        Task { await viewModel.alternarSalvo() }
+                    } label: {
+                        if viewModel.estaAlterandoSalvo {
+                            ProgressView()
+                        } else {
+                            Label(
+                                viewModel.estaSalvo
+                                    ? "Remover dos salvos"
+                                    : "Salvar Spot",
+                                systemImage: viewModel.estaSalvo
+                                    ? "bookmark.fill"
+                                    : "bookmark"
+                            )
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(
+                        viewModel.estaAlterandoSalvo
+                            || !viewModel.carregouEstadoSalvo
+                    )
+                }
+            }
+        }
+    }
 
     private var corDestaque: Color {
+        guard let spot = viewModel.spot else { return .accentColor }
+        return corDestaque(para: spot)
+    }
+
+    private func corDestaque(para spot: Spot) -> Color {
         switch spot.tipo {
-
-        case .evento:
-            return Color("CorEvento")
-
-        case .espaco:
-            return Color("CorEspaco")
+        case .evento: return Color("CorEvento")
+        case .espaco: return Color("CorEspaco")
         }
     }
 
-
-    // MARK: - Endereço
-
-    private var textoEndereco: String {
-
+    private func textoEndereco(_ spot: Spot) -> String {
         let endereco = spot.localizacao.endereco
-
         var texto = "\(endereco.logradouro), nº \(endereco.numero)"
 
         if let complemento = endereco.complemento,
@@ -180,17 +297,11 @@ struct DetalhesSpotView: View {
         }
 
         texto += " - \(endereco.cidade), \(endereco.estado)"
-
         return texto
     }
 
-
-    // MARK: - Evento
-
     private func textoDataEvento(_ evento: Evento) -> String {
-
         let calendario = Calendar.current
-
         let mesmoDia = calendario.isDate(
             evento.inicio,
             inSameDayAs: evento.termino
@@ -206,7 +317,6 @@ struct DetalhesSpotView: View {
 
         let dataInicio = formatadorData.string(from: evento.inicio)
         let dataTermino = formatadorData.string(from: evento.termino)
-
         let horaInicio = formatadorHorario.string(from: evento.inicio)
         let horaTermino = formatadorHorario.string(from: evento.termino)
 
@@ -217,24 +327,15 @@ struct DetalhesSpotView: View {
         return "\(dataInicio) \(horaInicio) - \(dataTermino) \(horaTermino)"
     }
 
-
-    // MARK: - Espaço
-
     private func textoFuncionamentoEspaco(_ espaco: Espaco) -> String {
-
         let diasComFuncionamento = espaco.funcionamento.dias.filter {
             !$0.intervalos.isEmpty
         }
 
-        guard !diasComFuncionamento.isEmpty else {
-            return "Horário não informado"
-        }
-
-        guard
-            let primeiroDia = diasComFuncionamento.first,
-            let ultimoDia = diasComFuncionamento.last,
-            let primeiroIntervalo = primeiroDia.intervalos.first
-        else {
+        guard !diasComFuncionamento.isEmpty,
+              let primeiroDia = diasComFuncionamento.first,
+              let ultimoDia = diasComFuncionamento.last,
+              let primeiroIntervalo = primeiroDia.intervalos.first else {
             return "Horário não informado"
         }
 
@@ -248,54 +349,25 @@ struct DetalhesSpotView: View {
         return "Aberto \(abertura) às \(fechamento) - \(abreviacaoDia(primeiroDia.dia)) a \(abreviacaoDia(ultimoDia.dia))"
     }
 
-
     private func textoHorario(_ horario: HorarioLocal) -> String {
-
         if horario.minuto == 0 {
-            return String(
-                format: "%02dh",
-                horario.hora
-            )
+            return String(format: "%02dh", horario.hora)
         }
-
-        return String(
-            format: "%02dh%02d",
-            horario.hora,
-            horario.minuto
-        )
+        return String(format: "%02dh%02d", horario.hora, horario.minuto)
     }
 
-
     private func abreviacaoDia(_ dia: DiaSemana) -> String {
-
         switch dia {
-
-        case .segunda:
-            return "seg"
-
-        case .terca:
-            return "ter"
-
-        case .quarta:
-            return "qua"
-
-        case .quinta:
-            return "qui"
-
-        case .sexta:
-            return "sex"
-
-        case .sabado:
-            return "sáb"
-
-        case .domingo:
-            return "dom"
+        case .segunda: return "seg"
+        case .terca: return "ter"
+        case .quarta: return "qua"
+        case .quinta: return "qui"
+        case .sexta: return "sex"
+        case .sabado: return "sáb"
+        case .domingo: return "dom"
         }
     }
 }
-
-
-// MARK: - Linha de informação
 
 private struct LinhaInformacaoSpot: View {
 
@@ -304,9 +376,7 @@ private struct LinhaInformacaoSpot: View {
     let cor: Color
 
     var body: some View {
-
         HStack(alignment: .top, spacing: 8) {
-
             Image(systemName: icone)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(cor)
@@ -321,240 +391,12 @@ private struct LinhaInformacaoSpot: View {
     }
 }
 
-
-// MARK: - Preview Evento
-
-#Preview("Evento") {
-
+#Preview {
     NavigationStack {
-
         DetalhesSpotView(
-            spot: Spot(
-                id: UUID(),
-                proprietarioID: UUID(),
-
-                nomePublicador: "Adailton José",
-
-                nome: "Maker School",
-
-                descricao: """
-                Bbdasi . aubfa bviabvsa v v avbiasvbaks bv vasv asibca a ciabciasb ciasbias ias viasvb isavv isa vb asa asb cis ias
-                """,
-
-                localizacao: Localizacao(
-                    endereco: Endereco(
-                        logradouro: "Rua das cores",
-                        numero: "07",
-                        complemento: nil,
-                        bairro: "Centro",
-                        cidade: "Recife",
-                        estado: "PE",
-                        codigoPostal: "50000-000",
-                        codigoPais: "BR"
-                    ),
-
-                    coordenadas: Coordenadas(
-                        latitude: -8.0476,
-                        longitude: -34.8770
-                    )
-                ),
-
-                telefone: "81 9 8798-2222",
-
-                link: URL(
-                    string: "https://makerschoolnicksaraev.com/"
-                ),
-
-                redesSociais: [],
-
-                fotoIDs: [
-                    UUID(),
-                    UUID(),
-                    UUID()
-                ],
-
-                detalhes: .evento(
-                    Evento(
-                        inicio: criarData(
-                            dia: 23,
-                            mes: 9,
-                            ano: 2026,
-                            hora: 10
-                        ),
-
-                        termino: criarData(
-                            dia: 30,
-                            mes: 9,
-                            ano: 2026,
-                            hora: 18
-                        ),
-
-                        fusoHorarioID: "America/Recife"
-                    )
-                ),
-
-                estaAtivo: true,
-                versao: 1,
-
-                criadoEm: Date(),
-                atualizadoEm: Date()
-            )
+            spotID: UUID(),
+            sessao: SessaoUsuario()
         )
     }
-}
-
-
-// MARK: - Preview Espaço
-
-#Preview("Espaço") {
-
-    NavigationStack {
-
-        DetalhesSpotView(
-            spot: Spot(
-                id: UUID(),
-                proprietarioID: UUID(),
-
-                nomePublicador: "Adailton José",
-
-                nome: "Makerlab",
-
-                descricao: """
-                Bbdasi . aubfa bviabvsa v v avbiasvbaks bv vasv asibca a ciabciasb ciasbias ias viasvb isavv isa vb asa asb cis ias
-                """,
-
-                localizacao: Localizacao(
-                    endereco: Endereco(
-                        logradouro: "Rua robonilda",
-                        numero: "88",
-                        complemento: nil,
-                        bairro: "Centro",
-                        cidade: "Recife",
-                        estado: "PE",
-                        codigoPostal: "50000-000",
-                        codigoPais: "BR"
-                    ),
-
-                    coordenadas: Coordenadas(
-                        latitude: -8.0476,
-                        longitude: -34.8770
-                    )
-                ),
-
-                telefone: "81 9 8798-2222",
-
-                link: URL(
-                    string: "https://makerschoolnicksaraev.com/"
-                ),
-
-                redesSociais: [],
-
-                fotoIDs: [
-                    UUID(),
-                    UUID(),
-                    UUID()
-                ],
-
-                detalhes: .espaco(
-                    Espaco(
-                        funcionamento: FuncionamentoSemanal(
-
-                            fusoHorarioID: "America/Recife",
-
-                            dias: [
-                                criarDia(
-                                    .segunda,
-                                    abertura: 8,
-                                    fechamento: 18
-                                ),
-
-                                criarDia(
-                                    .terca,
-                                    abertura: 8,
-                                    fechamento: 18
-                                ),
-
-                                criarDia(
-                                    .quarta,
-                                    abertura: 8,
-                                    fechamento: 18
-                                ),
-
-                                criarDia(
-                                    .quinta,
-                                    abertura: 8,
-                                    fechamento: 18
-                                ),
-
-                                criarDia(
-                                    .sexta,
-                                    abertura: 8,
-                                    fechamento: 18
-                                )
-                            ]
-                        )
-                    )
-                ),
-
-                estaAtivo: true,
-                versao: 1,
-
-                criadoEm: Date(),
-                atualizadoEm: Date()
-            )
-        )
-    }
-}
-
-
-// MARK: - Helpers dos Previews
-
-private func criarData(
-    dia: Int,
-    mes: Int,
-    ano: Int,
-    hora: Int,
-    minuto: Int = 0
-) -> Date {
-
-    var componentes = DateComponents()
-
-    componentes.day = dia
-    componentes.month = mes
-    componentes.year = ano
-    componentes.hour = hora
-    componentes.minute = minuto
-
-    return Calendar.current.date(
-        from: componentes
-    ) ?? Date()
-}
-
-
-private func criarDia(
-    _ dia: DiaSemana,
-    abertura: Int,
-    fechamento: Int
-) -> FuncionamentoDia {
-
-    FuncionamentoDia(
-        dia: dia,
-
-        intervalos: [
-            IntervaloFuncionamento(
-
-                abertura: HorarioLocal(
-                    hora: abertura,
-                    minuto: 0
-                ),
-
-                fechamento: HorarioLocal(
-                    hora: fechamento,
-                    minuto: 0
-                ),
-
-                terminaNoDiaSeguinte: false
-            )
-        ]
-    )
+    .preferredColorScheme(.dark)
 }

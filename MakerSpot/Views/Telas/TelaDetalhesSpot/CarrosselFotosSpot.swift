@@ -1,27 +1,35 @@
-//
-//  CarrosselFotosSpot.swift
-//  MakerSpot
-//
-//  Created by Bianca Duarte de Moraes Guerra on 22/09/26.
-//
-
-import Foundation
 import SwiftUI
+import UIKit
 
+/// Componente de apresentação: o carregamento das fotos pertence ao ViewModel da tela.
 struct CarrosselFotosSpot: View {
-    let quantidadeFotos: Int
+    let fotos: [FotoDisponivel]
+    var estaCarregando = false
 
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 8) {
-                ForEach(0..<quantidadeFotos, id: \.self) { _ in
-                    fotoPlaceholder
-                        .containerRelativeFrame(
-                            .horizontal,
-                            count: 10,
-                            span: 9,
-                            spacing: 8
-                        )
+                ForEach(0..<max(fotos.count, 3), id: \.self) { indice in
+                    Group {
+                        if fotos.indices.contains(indice),
+                           let imagem = UIImage(
+                            contentsOfFile: fotos[indice].arquivoURL.path
+                           ) {
+                            Image(uiImage: imagem)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            fotoPlaceholder
+                        }
+                    }
+                    .frame(height: 320)
+                    .containerRelativeFrame(
+                        .horizontal,
+                        count: 10,
+                        span: 9,
+                        spacing: 8
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             .scrollTargetLayout()
@@ -29,6 +37,11 @@ struct CarrosselFotosSpot: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
         .contentMargins(.horizontal, 16, for: .scrollContent)
+        .overlay {
+            if estaCarregando {
+                ProgressView()
+            }
+        }
     }
 
     private var fotoPlaceholder: some View {
@@ -44,5 +57,5 @@ struct CarrosselFotosSpot: View {
 }
 
 #Preview {
-    CarrosselFotosSpot(quantidadeFotos: 4)
+    CarrosselFotosSpot(fotos: [])
 }

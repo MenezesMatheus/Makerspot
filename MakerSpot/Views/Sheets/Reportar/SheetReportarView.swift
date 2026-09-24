@@ -3,9 +3,15 @@ import SwiftUI
 struct SheetReportarView: View {
 
     @Environment(\.dismiss) private var dismiss
-    @State private var descricao = ""
+    @State private var viewModel: ReportarSpotViewModel
+
+    init(viewModel: ReportarSpotViewModel) {
+        _viewModel = State(initialValue: viewModel)
+    }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         VStack(spacing: 0) {
 
             // MARK: - Cabeçalho
@@ -27,6 +33,7 @@ struct SheetReportarView: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(viewModel.estaEnviando)
 
                     Spacer()
                 }
@@ -44,18 +51,23 @@ struct SheetReportarView: View {
 
             // MARK: - Campo
 
-            TextField("Descreva", text: $descricao)
+            TextField("Descreva", text: $viewModel.texto)
                 .padding(.horizontal, 20)
                 .frame(height: 50)
                 .background(Color(.systemGray5))
                 .clipShape(Capsule())
                 .padding(.horizontal, 30)
                 .padding(.top, 28)
+                .disabled(viewModel.estaEnviando)
 
             // MARK: - Botão
 
             Button {
-                enviarDenuncia()
+                Task {
+                    if await viewModel.enviar() {
+                        dismiss()
+                    }
+                }
             } label: {
                 Text("Enviar")
                     .font(.body)
@@ -72,15 +84,26 @@ struct SheetReportarView: View {
             Spacer()
         }
         .background(Color(.systemBackground))
-    }
-
-    private func enviarDenuncia() {
-        print("Denúncia enviada: \(descricao)")
-        dismiss()
+        .interactiveDismissDisabled(viewModel.estaEnviando)
+        .alert(
+            "Não foi possível enviar a denúncia",
+            isPresented: Binding(
+                get: { viewModel.mensagemDeErro != nil },
+                set: { _ in viewModel.limparErro() }
+            )
+        ) {
+            Button("OK") { viewModel.limparErro() }
+        } message: {
+            Text(viewModel.mensagemDeErro ?? "")
+        }
     }
 }
 
 #Preview {
-    SheetReportarView()
+    SheetReportarView(
+        viewModel: ReportarSpotViewModel(
+            spotID: UUID(),
+            sessao: SessaoUsuario()
+        )
+    )
 }
-
