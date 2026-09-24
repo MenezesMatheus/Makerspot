@@ -9,6 +9,8 @@ import SwiftUI
 import UIKit
 
 struct CardEvento: View {
+    @Environment(SessaoUsuario.self) private var sessao
+
     static let proporcaoDaLargura: CGFloat = 0.953
     static let proporcaoDoCard: CGFloat = 344 / 320
     static let alturaDoRodape: CGFloat = 96
@@ -21,6 +23,7 @@ struct CardEvento: View {
     let estaSalvo: Bool
     let estaAlterandoSalvo: Bool
     let podeSalvar: Bool
+    private let spotID: UUID?
     private let aoAlternarSalvo: () -> Void
 
     init(
@@ -32,7 +35,8 @@ struct CardEvento: View {
         estaSalvo: Bool,
         estaAlterandoSalvo: Bool,
         podeSalvar: Bool,
-        aoAlternarSalvo: @escaping () -> Void
+        aoAlternarSalvo: @escaping () -> Void,
+        spotID: UUID? = nil
     ) {
         self.imagem = imagem
         self.tipo = tipo
@@ -42,6 +46,7 @@ struct CardEvento: View {
         self.estaSalvo = estaSalvo
         self.estaAlterandoSalvo = estaAlterandoSalvo
         self.podeSalvar = podeSalvar
+        self.spotID = spotID
         self.aoAlternarSalvo = aoAlternarSalvo
     }
 
@@ -63,7 +68,8 @@ struct CardEvento: View {
             estaSalvo: estaSalvo,
             estaAlterandoSalvo: estaAlterandoSalvo,
             podeSalvar: podeSalvar,
-            aoAlternarSalvo: aoAlternarSalvo
+            aoAlternarSalvo: aoAlternarSalvo,
+            spotID: spot.id
         )
     }
 
@@ -91,11 +97,31 @@ struct CardEvento: View {
         )
     }
 
+    @ViewBuilder
     var body: some View {
+        if let spotID {
+            ZStack(alignment: .bottomTrailing) {
+                NavigationLink {
+                    DetalhesSpotView(spotID: spotID, sessao: sessao)
+                } label: {
+                    cartao(mostrarControle: false)
+                }
+                .buttonStyle(.plain)
+
+                botaoSalvar
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 42)
+            }
+        } else {
+            cartao(mostrarControle: true)
+        }
+    }
+
+    private func cartao(mostrarControle: Bool) -> some View {
         Color.clear
             .aspectRatio(Self.proporcaoDoCard, contentMode: .fit)
             .overlay {
-                conteudoDoCard
+                conteudoDoCard(mostrarControle: mostrarControle)
             }
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -105,7 +131,7 @@ struct CardEvento: View {
             .accessibilityElement(children: .contain)
     }
 
-    private var conteudoDoCard: some View {
+    private func conteudoDoCard(mostrarControle: Bool) -> some View {
         VStack(spacing: 0) {
             imagemPrincipal
 
@@ -119,7 +145,13 @@ struct CardEvento: View {
 
                     Spacer(minLength: 0)
 
-                    botaoSalvar
+                    if mostrarControle {
+                        botaoSalvar
+                    } else {
+                        Color.clear
+                            .frame(width: 44, height: 44)
+                            .accessibilityHidden(true)
+                    }
                 }
 
                 ViewThatFits(in: .horizontal) {
@@ -148,7 +180,10 @@ struct CardEvento: View {
     }
 
     private var corDestaque: Color {
-        tipo == .evento ? .orange : .blue
+        switch tipo {
+        case .evento: return Color("CorEvento")
+        case .espaco: return Color("CorEspaco")
+        }
     }
 
     private var iconeInformacao: String {
@@ -257,5 +292,6 @@ struct CardEvento: View {
     }
     .contentMargins(.horizontal, 20, for: .scrollContent)
     .background(.black)
+    .environment(SessaoUsuario())
     .preferredColorScheme(.dark)
 }

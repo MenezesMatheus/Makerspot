@@ -17,8 +17,8 @@ enum ImagemCardSimples {
 private extension TipoSpot {
     var corDestaque: Color {
         switch self {
-        case .evento: return .orange
-        case .espaco: return .blue
+        case .evento: return Color("CorEvento")
+        case .espaco: return Color("CorEspaco")
         }
     }
 
@@ -153,11 +153,31 @@ struct CardSimplesDados: Identifiable {
 }
 
 struct CardSimplesView: View {
+    @Environment(SessaoUsuario.self) private var sessao
+
     let dados: CardSimplesDados
     let modo: CardSimplesModo
     let aoSelecionar: () -> Void
 
     var body: some View {
+        ZStack(alignment: .topTrailing) {
+            NavigationLink {
+                DetalhesSpotView(spotID: dados.id, sessao: sessao)
+            } label: {
+                conteudo
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(
+                TapGesture().onEnded { _ in aoSelecionar() }
+            )
+
+            controleFinal
+                .padding(14)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var conteudo: some View {
         HStack(alignment: .top, spacing: 10) {
             ImagemCardSimplesView(imagem: dados.imagem)
 
@@ -177,7 +197,9 @@ struct CardSimplesView: View {
 
                     Spacer(minLength: 0)
 
-                    controleFinal
+                    Color.clear
+                        .frame(width: 60, height: 44)
+                        .accessibilityHidden(true)
                 }
 
                 Spacer(minLength: 4)
@@ -204,9 +226,6 @@ struct CardSimplesView: View {
         .background(Color(white: 0.08))
         .clipShape(RoundedRectangle(cornerRadius: 28))
         .contentShape(RoundedRectangle(cornerRadius: 28))
-        .onTapGesture(perform: aoSelecionar)
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(named: "Abrir detalhes", aoSelecionar)
     }
 
     private var pesoInformacoes: Font.Weight {
@@ -341,81 +360,93 @@ private struct InfoCardSimples: View {
 // MARK: - Previews
 
 #Preview("Evento - visitante") {
-    CardSimplesView(
-        dados: CardSimplesDados(
-            tipo: .evento,
-            titulo: "Mobile-se",
-            imagem: .asset("mobilese"),
-            textoInfo: "23.09 10h",
-            localCidade: "Recife, PE"
-        ),
-        modo: .visitante(
-            estaSalvo: false,
-            estaProcessando: false,
-            podeSalvar: true,
-            aoAlternar: {}
-        ),
-        aoSelecionar: { print("Abrir detalhes") }
-    )
-    .padding()
-    .background(.black)
+    NavigationStack {
+        CardSimplesView(
+            dados: CardSimplesDados(
+                tipo: .evento,
+                titulo: "Mobile-se",
+                imagem: .asset("mobilese"),
+                textoInfo: "23.09 10h",
+                localCidade: "Recife, PE"
+            ),
+            modo: .visitante(
+                estaSalvo: false,
+                estaProcessando: false,
+                podeSalvar: true,
+                aoAlternar: {}
+            ),
+            aoSelecionar: { print("Abrir detalhes") }
+        )
+        .padding()
+        .background(.black)
+    }
+    .environment(SessaoUsuario())
 }
 
 #Preview("Espaço - visitante") {
-    CardSimplesView(
-        dados: CardSimplesDados(
-            tipo: .espaco,
-            titulo: "Fab Lab",
-            imagem: .asset("fablab"),
-            textoInfo: "Aberto 08h–18h",
-            localCidade: "Recife, PE"
-        ),
-        modo: .visitante(
-            estaSalvo: true,
-            estaProcessando: false,
-            podeSalvar: true,
-            aoAlternar: {}
-        ),
-        aoSelecionar: { print("Abrir detalhes") }
-    )
-    .padding()
-    .background(.black)
+    NavigationStack {
+        CardSimplesView(
+            dados: CardSimplesDados(
+                tipo: .espaco,
+                titulo: "Fab Lab",
+                imagem: .asset("fablab"),
+                textoInfo: "Aberto 08h–18h",
+                localCidade: "Recife, PE"
+            ),
+            modo: .visitante(
+                estaSalvo: true,
+                estaProcessando: false,
+                podeSalvar: true,
+                aoAlternar: {}
+            ),
+            aoSelecionar: { print("Abrir detalhes") }
+        )
+        .padding()
+        .background(.black)
+    }
+    .environment(SessaoUsuario())
 }
 
 #Preview("Evento - proprietário") {
-    CardSimplesView(
-        dados: CardSimplesDados(
-            tipo: .evento,
-            titulo: "Makerday",
-            textoInfo: "30.09 14h",
-            localCidade: "Recife, PE"
-        ),
-        modo: .proprietario(
-            estaAtivo: true,
-            estaProcessando: false,
-            aoAlternar: { _ in }
-        ),
-        aoSelecionar: { print("Abrir detalhes") }
-    )
-    .padding()
-    .background(.black)
+    NavigationStack {
+        CardSimplesView(
+            dados: CardSimplesDados(
+                tipo: .evento,
+                titulo: "Makerday",
+                textoInfo: "30.09 14h",
+                localCidade: "Recife, PE"
+            ),
+            modo: .proprietario(
+                estaAtivo: true,
+                estaProcessando: false,
+                aoAlternar: { _ in }
+            ),
+            aoSelecionar: { print("Abrir detalhes") }
+        )
+        .padding()
+        .background(.black)
+    }
+    .environment(SessaoUsuario())
 }
 
 #Preview("Espaço - proprietário") {
-    CardSimplesView(
-        dados: CardSimplesDados(
-            tipo: .espaco,
-            titulo: "Oficina Criativa",
-            textoInfo: "Aberto 09h–17h",
-            localCidade: "Olinda, PE"
-        ),
-        modo: .proprietario(
-            estaAtivo: true,
-            estaProcessando: false,
-            aoAlternar: { _ in }
-        ),
-        aoSelecionar: { print("Abrir detalhes") }
-    )
-    .padding()
-    .background(.black)
+    NavigationStack {
+        CardSimplesView(
+            dados: CardSimplesDados(
+                tipo: .espaco,
+                titulo: "Oficina Criativa",
+                textoInfo: "Aberto 09h–17h",
+                localCidade: "Olinda, PE"
+            ),
+            modo: .proprietario(
+                estaAtivo: true,
+                estaProcessando: false,
+                aoAlternar: { _ in }
+            ),
+            aoSelecionar: { print("Abrir detalhes") }
+        )
+        .padding()
+        .background(.black)
+    }
+    .environment(SessaoUsuario())
 }
