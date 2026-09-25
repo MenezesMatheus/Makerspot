@@ -13,8 +13,10 @@ struct DetalhesSpotView: View {
     @State private var mostrarEditor = false
     @State private var confirmarExclusao = false
     @State private var iniciouCarregamento = false
+    private let sessao: SessaoUsuario
 
     init(spotID: UUID, sessao: SessaoUsuario) {
+        self.sessao = sessao
         _viewModel = State(
             initialValue: DetalhesSpotViewModel(
                 spotID: spotID,
@@ -44,7 +46,14 @@ struct DetalhesSpotView: View {
                 .presentationDragIndicator(.visible)
         }
         .navigationDestination(isPresented: $mostrarEditor) {
-            EditarSpotView()
+            if let spot = viewModel.spot {
+                EditarSpotView(
+                    spot: spot,
+                    sessao: sessao,
+                    aoAtualizar: viewModel.receberAtualizacao,
+                    aoExcluir: { dismiss() }
+                )
+            }
         }
         .disabled(confirmarExclusao || viewModel.estaExcluindo)
         .overlay {
@@ -165,11 +174,13 @@ struct DetalhesSpotView: View {
                         )
                     }
 
-                    LinhaInformacaoSpot(
-                        icone: "phone",
-                        texto: spot.telefone,
-                        cor: corDestaque
-                    )
+                    if !spot.telefone.isEmpty {
+                        LinhaInformacaoSpot(
+                            icone: "phone",
+                            texto: spot.telefone,
+                            cor: corDestaque
+                        )
+                    }
 
                     LinhaInformacaoSpot(
                         icone: "mappin.and.ellipse",
