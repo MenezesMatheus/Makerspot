@@ -5,100 +5,8 @@
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
 //
 
-import CoreTransferable
-import ImageIO
 import PhotosUI
 import SwiftUI
-import UniformTypeIdentifiers
-
-// Copia a imagem do PhotosPicker porque a URL recebida existe apenas durante a transferência.
-struct FotoImportadaCadastro: Transferable {
-    let foto: FotoCadastroSpot
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .image) { recebido in
-            let gerenciador = FileManager.default
-            let tamanho = try recebido.file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard tamanho > 0, tamanho <= 30 * 1_024 * 1_024 else {
-                throw ErroCRUD.dadosInvalidos(descricao: "Cada foto deve ter até 30 MB.")
-            }
-
-            let base = gerenciador.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            let extensao = recebido.file.pathExtension.isEmpty ? "img" : recebido.file.pathExtension
-            let arquivo = base.appendingPathExtension(extensao)
-            let miniatura = base.appendingPathExtension("thumb.jpg")
-
-            do {
-                try gerenciador.copyItem(at: recebido.file, to: arquivo)
-                guard let fonte = CGImageSourceCreateWithURL(arquivo as CFURL, nil),
-                      let imagem = CGImageSourceCreateThumbnailAtIndex(fonte, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 480
-                      ] as CFDictionary),
-                      let destino = CGImageDestinationCreateWithURL(
-                        miniatura as CFURL, UTType.jpeg.identifier as CFString, 1, nil
-                      ) else {
-                    throw ErroCRUD.dadosInvalidos(descricao: "Selecione uma imagem válida.")
-                }
-                CGImageDestinationAddImage(destino, imagem, nil)
-                guard CGImageDestinationFinalize(destino) else {
-                    throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível preparar a foto.")
-                }
-                try Task.checkCancellation()
-                return Self(foto: FotoCadastroSpot(arquivoURL: arquivo, miniaturaURL: miniatura))
-            } catch {
-                try? gerenciador.removeItem(at: arquivo)
-                try? gerenciador.removeItem(at: miniatura)
-                throw error
-            }
-        }
-    }
-}
-
-struct HorarioFuncionamentoCadastro: Identifiable {
-    let id = UUID()
-    var dias: Set<DiaSemana> = []
-    var abertura: Date
-    var fechamento: Date
-
-    init(fusoHorario: TimeZone) {
-        var calendario = Calendar(identifier: .gregorian)
-        calendario.timeZone = fusoHorario
-        abertura = calendario.date(from: DateComponents(
-            year: 2001, month: 1, day: 15, hour: 9
-        ))!
-        fechamento = calendario.date(from: DateComponents(
-            year: 2001, month: 1, day: 15, hour: 18
-        ))!
-    }
-
-    var resumoDias: String {
-        if dias.isEmpty { return "Selecionar" }
-        if dias.count == 7 { return "Todos os dias" }
-        if dias == Set([.segunda, .terca, .quarta, .quinta, .sexta]) { return "Seg. a sex." }
-        return DiaSemana.allCases
-            .filter { dias.contains($0) }
-            .map(\.nomeAbreviado)
-            .joined(separator: ", ")
-    }
-
-    func intervalo(fusoHorario: TimeZone) -> IntervaloFuncionamento {
-        var calendario = Calendar(identifier: .gregorian)
-        calendario.timeZone = fusoHorario
-        let inicio = calendario.dateComponents([.hour, .minute], from: abertura)
-        let fim = calendario.dateComponents([.hour, .minute], from: fechamento)
-        let horaInicio = inicio.hour ?? 0
-        let minutoInicio = inicio.minute ?? 0
-        let horaFim = fim.hour ?? 0
-        let minutoFim = fim.minute ?? 0
-        return IntervaloFuncionamento(
-            abertura: HorarioLocal(hora: horaInicio, minuto: minutoInicio),
-            fechamento: HorarioLocal(hora: horaFim, minuto: minutoFim),
-            terminaNoDiaSeguinte: horaFim * 60 + minutoFim < horaInicio * 60 + minutoInicio
-        )
-    }
-}
 
 struct CadastrarSpotView: View {
     @Environment(\.dismiss) private var dismiss
@@ -224,8 +132,7 @@ struct CadastrarSpotView: View {
                 Section {
                     HStack(spacing: 12) {
                         ProgressView()
-                        Text(viewModel.estaImportandoFotos ? "Preparando fotos…" :
-                            "Salvando \(viewModel.nomeTipo)… \(viewModel.quantidadeFotosProcessadas)/\(viewModel.fotos.count) fotos")
+                        Text(viewModel.textoProgresso)
                             .font(.footnote)
                     }
                     .accessibilityElement(children: .combine)
@@ -288,7 +195,7 @@ struct CadastrarSpotView: View {
                     .textContentType(.postalCode)
                     .textInputAutocapitalization(.characters)
                 Picker("País", selection: $viewModel.endereco.codigoPais) {
-                    ForEach(Self.paises, id: \.codigo) { pais in
+                    ForEach(viewModel.paises) { pais in
                         Text(pais.nome).tag(pais.codigo)
                     }
                 }
@@ -469,14 +376,6 @@ struct CadastrarSpotView: View {
         Binding(get: { texto.wrappedValue ?? "" }, set: { texto.wrappedValue = $0 })
     }
 
-    private static let paises: [(codigo: String, nome: String)] = {
-        let locale = Locale(identifier: "pt_BR")
-        return Locale.Region.isoRegions.compactMap { regiao in
-            guard regiao.identifier.count == 2,
-                  let nome = locale.localizedString(forRegionCode: regiao.identifier) else { return nil }
-            return (codigo: regiao.identifier, nome: nome)
-        }.sorted { $0.nome.localizedCompare($1.nome) == .orderedAscending }
-    }()
 }
 
 private struct FuncionamentoEspacoView: View {
@@ -498,14 +397,13 @@ private struct FuncionamentoEspacoView: View {
                     aoRemover: { viewModel.removerHorario(id: horario.id) }
                 )
             }
-            Section {
-                Button(action: viewModel.adicionarHorario) {
-                    rotuloAdicionar("Adicionar outro horário")
+
+            if let erro = viewModel.erroFuncionamento {
+                Section {
+                    Text(erro)
+                        .foregroundStyle(.red)
                 }
-            } footer: {
-                if let erro = viewModel.erroFuncionamento {
-                    Text(erro).foregroundStyle(.red)
-                }
+                .listRowBackground(Color.clear)
             }
         }
     }
@@ -559,7 +457,7 @@ private struct SecaoHorarioEspaco: View {
         .environment(\.timeZone, fusoHorario)
         .sheet(isPresented: $mostraDias) {
             SelecaoDiasFuncionamento(dias: $horario.dias)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
     }
@@ -576,7 +474,6 @@ private struct SecaoHorarioEspaco: View {
 }
 
 private struct SelecaoDiasFuncionamento: View {
-    @Environment(\.dismiss) private var dismiss
     @Binding var dias: Set<DiaSemana>
 
     var body: some View {
@@ -607,11 +504,6 @@ private struct SelecaoDiasFuncionamento: View {
             }
             .navigationTitle("Dias de funcionamento")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Concluído") { dismiss() }
-                }
-            }
         }
     }
 }
@@ -626,18 +518,6 @@ private extension DiaSemana {
         case .sexta: return "Sexta-feira"
         case .sabado: return "Sábado"
         case .domingo: return "Domingo"
-        }
-    }
-
-    var nomeAbreviado: String {
-        switch self {
-        case .segunda: return "Seg."
-        case .terca: return "Ter."
-        case .quarta: return "Qua."
-        case .quinta: return "Qui."
-        case .sexta: return "Sex."
-        case .sabado: return "Sáb."
-        case .domingo: return "Dom."
         }
     }
 }

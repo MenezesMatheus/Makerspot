@@ -5,15 +5,155 @@
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
 //
 
+import CoreTransferable
 import Foundation
+import ImageIO
 import Observation
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FotoCadastroSpot: Identifiable, Equatable {
     let id = UUID()
     let arquivoURL: URL
     let miniaturaURL: URL
+}
+
+struct FotoImportadaCadastro: Transferable {
+    let foto: FotoCadastroSpot
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .image) { recebido in
+            let gerenciador = FileManager.default
+            let tamanho = try recebido.file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard tamanho > 0, tamanho <= 30 * 1_024 * 1_024 else {
+                throw ErroCRUD.dadosInvalidos(descricao: "Cada foto deve ter até 30 MB.")
+            }
+
+            let base = gerenciador.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let extensao = recebido.file.pathExtension.isEmpty ? "img" : recebido.file.pathExtension
+            let arquivo = base.appendingPathExtension(extensao)
+            let miniatura = base.appendingPathExtension("thumb.jpg")
+
+            do {
+                try gerenciador.copyItem(at: recebido.file, to: arquivo)
+                guard let fonte = CGImageSourceCreateWithURL(arquivo as CFURL, nil),
+                      let imagem = CGImageSourceCreateThumbnailAtIndex(fonte, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 480
+                      ] as CFDictionary),
+                      let destino = CGImageDestinationCreateWithURL(
+                        miniatura as CFURL,
+                        UTType.jpeg.identifier as CFString,
+                        1,
+                        nil
+                      ) else {
+                    throw ErroCRUD.dadosInvalidos(descricao: "Selecione uma imagem válida.")
+                }
+                CGImageDestinationAddImage(destino, imagem, nil)
+                guard CGImageDestinationFinalize(destino) else {
+                    throw ErroCRUD.dadosInvalidos(
+                        descricao: "Não foi possível preparar a foto."
+                    )
+                }
+                try Task.checkCancellation()
+                return Self(foto: FotoCadastroSpot(
+                    arquivoURL: arquivo,
+                    miniaturaURL: miniatura
+                ))
+            } catch {
+                try? gerenciador.removeItem(at: arquivo)
+                try? gerenciador.removeItem(at: miniatura)
+                throw error
+            }
+        }
+    }
+}
+
+struct HorarioFuncionamentoCadastro: Identifiable {
+    let id = UUID()
+    var dias: Set<DiaSemana> = []
+    var abertura: Date
+    var fechamento: Date
+
+    init(fusoHorario: TimeZone) {
+        var calendario = Calendar(identifier: .gregorian)
+        calendario.timeZone = fusoHorario
+        abertura = calendario.date(from: DateComponents(
+            year: 2001,
+            month: 1,
+            day: 15,
+            hour: 9
+        ))!
+        fechamento = calendario.date(from: DateComponents(
+            year: 2001,
+            month: 1,
+            day: 15,
+            hour: 18
+        ))!
+    }
+
+    var resumoDias: String {
+        if dias.isEmpty { return "Selecionar" }
+        if dias.count == 7 { return "Todos os dias" }
+        if dias == Set([.segunda, .terca, .quarta, .quinta, .sexta]) {
+            return "Seg. a sex."
+        }
+        return DiaSemana.allCases
+            .filter { dias.contains($0) }
+            .map(Self.nomeAbreviado)
+            .joined(separator: ", ")
+    }
+
+    func intervalo(fusoHorario: TimeZone) -> IntervaloFuncionamento {
+        var calendario = Calendar(identifier: .gregorian)
+        calendario.timeZone = fusoHorario
+        let inicio = calendario.dateComponents([.hour, .minute], from: abertura)
+        let fim = calendario.dateComponents([.hour, .minute], from: fechamento)
+        let horaInicio = inicio.hour ?? 0
+        let minutoInicio = inicio.minute ?? 0
+        let horaFim = fim.hour ?? 0
+        let minutoFim = fim.minute ?? 0
+        return IntervaloFuncionamento(
+            abertura: HorarioLocal(hora: horaInicio, minuto: minutoInicio),
+            fechamento: HorarioLocal(hora: horaFim, minuto: minutoFim),
+            terminaNoDiaSeguinte: horaFim * 60 + minutoFim < horaInicio * 60 + minutoInicio
+        )
+    }
+
+    nonisolated private static func nomeAbreviado(_ dia: DiaSemana) -> String {
+        switch dia {
+        case .segunda: return "Seg."
+        case .terca: return "Ter."
+        case .quarta: return "Qua."
+        case .quinta: return "Qui."
+        case .sexta: return "Sex."
+        case .sabado: return "Sáb."
+        case .domingo: return "Dom."
+        }
+    }
+}
+
+struct OpcaoPaisSpot: Identifiable, Sendable {
+    let codigo: String
+    let nome: String
+
+    var id: String { codigo }
+}
+
+enum OpcoesFormularioSpot {
+    static let paises: [OpcaoPaisSpot] = {
+        let locale = Locale(identifier: "pt_BR")
+        return Locale.Region.isoRegions.compactMap { regiao in
+            guard regiao.identifier.count == 2,
+                  let nome = locale.localizedString(forRegionCode: regiao.identifier) else {
+                return nil
+            }
+            return OpcaoPaisSpot(codigo: regiao.identifier, nome: nome)
+        }
+        .sorted { $0.nome.localizedCompare($1.nome) == .orderedAscending }
+    }()
 }
 
 @MainActor
@@ -36,6 +176,7 @@ final class CadastrarSpotViewModel {
     var horariosFuncionamento: [HorarioFuncionamentoCadastro] = []
     let fusoHorario: TimeZone
     let telefoneSugerido: String?
+    let paises = OpcoesFormularioSpot.paises
 
     private(set) var fotos: [FotoCadastroSpot] = []
     private(set) var spotCriado: Spot?
@@ -121,6 +262,11 @@ final class CadastrarSpotViewModel {
     }
 
     var estaOcupado: Bool { estaCadastrando || estaImportandoFotos }
+
+    var textoProgresso: String {
+        if estaImportandoFotos { return "Preparando fotos…" }
+        return "Salvando \(nomeTipo)… \(quantidadeFotosProcessadas)/\(fotos.count) fotos"
+    }
 
     var podeCadastrar: Bool {
         !estaOcupado && !mostraSucesso && !deveFechar
