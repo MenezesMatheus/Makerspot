@@ -11,6 +11,7 @@ import Observation
 @MainActor
 @Observable
 final class TodosEventosViewModel {
+    private(set) var cadastro: CadastrarSpotViewModel?
     let fotosSpots: FotosSpotsViewModel
     private(set) var eventos: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
@@ -28,6 +29,7 @@ final class TodosEventosViewModel {
     @ObservationIgnored private var cursor: CursorPaginaSpots?
     @ObservationIgnored private var identificadoresCarregados: Set<UUID> = []
     @ObservationIgnored private var carregouPrimeiraPagina = false
+    @ObservationIgnored private var criarCadastro: (() -> CadastrarSpotViewModel)?
 
     init(
         crud: SpotCRUD,
@@ -54,6 +56,32 @@ final class TodosEventosViewModel {
             usuarioAtualID: { [weak sessao] in sessao?.usuarioAtual?.id },
             tamanhoDaPagina: tamanhoDaPagina
         )
+        criarCadastro = {
+            let cadastro = CadastrarSpotViewModel(sessao: sessao)
+            cadastro.tipoSelecionado = .evento
+            return cadastro
+        }
+    }
+
+    func iniciarCadastro() {
+        guard cadastro == nil else { return }
+        cadastro = criarCadastro?()
+    }
+
+    func encerrarCadastro() {
+        defer { cadastro = nil }
+        guard let criado = cadastro?.spotCriado,
+              criado.tipo == .evento,
+              criado.estaAtivo else {
+            return
+        }
+
+        if let indice = eventos.firstIndex(where: { $0.id == criado.id }) {
+            eventos[indice] = criado
+        } else {
+            eventos.insert(criado, at: 0)
+            identificadoresCarregados.insert(criado.id)
+        }
     }
 
     func carregarPrimeiraPagina() async {
@@ -189,3 +217,4 @@ final class TodosEventosViewModel {
         podeCarregarMais = true
     }
 }
+
