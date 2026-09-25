@@ -208,13 +208,20 @@ final class UsuarioCRUD {
             usuarioID: usuarioID
         )
 
-        guard spots.allSatisfy({
-            $0.creatorUserRecordID == contexto.identificadorCloudKit
-        }) else {
-            throw ErroCRUD.respostaInconsistente
+        for registro in spots {
+            let spot = try ConversorRegistroCloudKit.spot(de: registro)
+            guard autorizacao.ehProprietario(
+                do: registro,
+                spot: spot,
+                contexto: contexto
+            ) else {
+                throw ErroCRUD.respostaInconsistente
+            }
         }
 
-        try await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
+        // A limpeza de assinaturas é auxiliar e não deve impedir a exclusão
+        // dos dados da conta caso o serviço de notificações esteja indisponível.
+        try? await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
         try await excluir(fotos, tipo: .fotoSpot)
         try await excluir(spots, tipo: .spot)
         try await excluir(salvos, tipo: .spotSalvo)

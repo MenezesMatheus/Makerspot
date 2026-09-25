@@ -34,7 +34,7 @@ struct BuscaView: View {
                            ),
                            aoSelecionar: { aoSelecionarSpot(spot) }
                        )
-                       .task {
+                       .task(id: spot.fotoIDs) {
                            await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                            await carregarMaisSeNecessario(spot)
                        }
@@ -61,7 +61,7 @@ struct BuscaView: View {
                await viewModel.recarregar()
            }
            .task {
-               if viewModel.spotsCarregados.isEmpty {
+               if !viewModel.carregouPrimeiraPagina {
                    await viewModel.carregarPrimeiraPagina()
                }
            }

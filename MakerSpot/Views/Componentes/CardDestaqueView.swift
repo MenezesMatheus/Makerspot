@@ -97,31 +97,15 @@ struct CardEvento: View {
         )
     }
 
-    @ViewBuilder
     var body: some View {
-        if let spotID {
-            ZStack(alignment: .bottomTrailing) {
-                NavigationLink {
-                    DetalhesSpotView(spotID: spotID, sessao: sessao)
-                } label: {
-                    cartao(mostrarControle: false)
-                }
-                .buttonStyle(.plain)
-
-                botaoSalvar
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 42)
-            }
-        } else {
-            cartao(mostrarControle: true)
-        }
+        cartao
     }
 
-    private func cartao(mostrarControle: Bool) -> some View {
+    private var cartao: some View {
         Color.clear
             .aspectRatio(Self.proporcaoDoCard, contentMode: .fit)
             .overlay {
-                conteudoDoCard(mostrarControle: mostrarControle)
+                conteudoDoCard
             }
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -131,39 +115,37 @@ struct CardEvento: View {
             .accessibilityElement(children: .contain)
     }
 
-    private func conteudoDoCard(mostrarControle: Bool) -> some View {
+    private var conteudoDoCard: some View {
         VStack(spacing: 0) {
-            imagemPrincipal
+            abrirDetalhes { imagemPrincipal }
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(titulo)
-                        .font(.title2.bold())
-                        .foregroundStyle(corDestaque)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-
-                    Spacer(minLength: 0)
-
-                    if mostrarControle {
-                        botaoSalvar
-                    } else {
-                        Color.clear
-                            .frame(width: 44, height: 44)
-                            .accessibilityHidden(true)
+                HStack(spacing: 8) {
+                    abrirDetalhes {
+                        Text(titulo)
+                            .font(.title2.bold())
+                            .foregroundStyle(corDestaque)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
+                    // Irmão do link, sem uma área de navegação por baixo.
+                    botaoSalvar
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        informacaoLocal
-                        informacaoTemporal
-                    }
+                abrirDetalhes {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            informacaoLocal
+                            informacaoTemporal
+                        }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        informacaoLocal
-                        informacaoTemporal
+                        VStack(alignment: .leading, spacing: 8) {
+                            informacaoLocal
+                            informacaoTemporal
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(.horizontal, 14)
@@ -176,6 +158,21 @@ struct CardEvento: View {
             )
             .background(Color(.secondarySystemBackground))
             .layoutPriority(1)
+        }
+    }
+
+    @ViewBuilder
+    private func abrirDetalhes<Conteudo: View>(@ViewBuilder conteudo: () -> Conteudo) -> some View {
+        if let spotID {
+            NavigationLink {
+                DetalhesSpotView(spotID: spotID, sessao: sessao)
+            } label: {
+                conteudo().contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Abrir detalhes de \(titulo)")
+        } else {
+            conteudo()
         }
     }
 
@@ -254,9 +251,9 @@ struct CardEvento: View {
     private var botaoSalvar: some View {
         Button(action: aoAlternarSalvo) {
             Group {
-                if estaAlterandoSalvo {
-                    ProgressView()
-                        .tint(.white)
+                if !podeSalvar {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .font(.title3)
                 } else {
                     Image(systemName: estaSalvo ? "bookmark.fill" : "bookmark")
                         .font(.title3)
@@ -264,11 +261,16 @@ struct CardEvento: View {
             }
             .frame(width: 44, height: 44)
             .foregroundStyle(.white)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!podeSalvar || estaAlterandoSalvo)
         .opacity(podeSalvar ? 1 : 0.45)
-        .accessibilityLabel(estaSalvo ? "Remover dos salvos" : "Salvar Spot")
+        .accessibilityLabel(
+            !podeSalvar
+                ? "Seu Spot"
+                : (estaSalvo ? "Remover dos salvos" : "Salvar Spot")
+        )
         .accessibilityValue(estaAlterandoSalvo ? "Atualizando" : "")
     }
 }

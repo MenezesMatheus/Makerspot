@@ -8,15 +8,6 @@
 import CloudKit
 import Foundation
 
-struct ItemSpotSalvo: Equatable, Sendable {
-    let registro: SpotSalvo
-    let spot: Spot
-
-    var foiAtualizado: Bool {
-        spot.versao > registro.ultimaVersaoConhecida
-    }
-}
-
 enum MudancaSpotSalvo: Equatable, Sendable {
     case ignorada
     case atualizado(Spot)
@@ -24,6 +15,7 @@ enum MudancaSpotSalvo: Equatable, Sendable {
 }
 
 final class SalvosCRUD {
+    private let alteracoes: AlteracoesSpots
     private let cliente: ClienteCloudKit
     private let assinaturas: AssinaturasCloudKit
     private let autorizacao: AutorizacaoCRUD
@@ -36,6 +28,7 @@ final class SalvosCRUD {
         notificacoes: Notificacoes = Notificacoes()
     ) {
         self.cliente = cliente
+        self.alteracoes = sessao.alteracoesSpots
         self.assinaturas = assinaturas
         self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
@@ -48,10 +41,11 @@ final class SalvosCRUD {
             tipo: .spot
         )
         let spot = try ApoioCRUD.spotValido(de: registroSpot)
-        guard let criadorSpot = registroSpot.creatorUserRecordID else {
-            throw ErroCRUD.respostaInconsistente
-        }
-        guard criadorSpot.recordName != contexto.identificadorCloudKit.recordName else {
+        guard !autorizacao.foiCriadoPeloUsuarioAtual(
+            registroSpot,
+            spot: spot,
+            contexto: contexto
+        ) else {
             throw ErroCRUD.spotProprioNaoPodeSerSalvo
         }
 
@@ -62,8 +56,7 @@ final class SalvosCRUD {
         do {
             let existente = try await cliente.buscar(identificador, tipo: .spotSalvo)
             let salvo = try ConversorRegistroCloudKit.spotSalvo(de: existente)
-            try await assinaturas.garantirAssinatura(para: spot.id)
-            return await finalizarSalvamento(salvo, spot: spot)
+            return finalizarSalvamento(salvo, spot: spot)
         } catch ErroCloudKit.registroNaoEncontrado {
         }
 
@@ -74,13 +67,12 @@ final class SalvosCRUD {
             ultimaVersaoConhecida: spot.versao
         )
 
-        try await assinaturas.garantirAssinatura(para: spot.id)
         do {
             let registro = try ConversorRegistroCloudKit.registro(de: salvo)
             let registroSalvo = try ConversorRegistroCloudKit.spotSalvo(
                 de: try await cliente.salvar(registro)
             )
-            return await finalizarSalvamento(registroSalvo, spot: spot)
+            return finalizarSalvamento(registroSalvo, spot: spot)
         } catch {
             let erroOriginal = error
             do {
@@ -91,10 +83,10 @@ final class SalvosCRUD {
                 let registroSalvo = try ConversorRegistroCloudKit.spotSalvo(
                     de: existente
                 )
-                return await finalizarSalvamento(registroSalvo, spot: spot)
+                return finalizarSalvamento(registroSalvo, spot: spot)
             } catch let erroVerificacao as ErroCloudKit {
                 if case .registroNaoEncontrado = erroVerificacao {
-                    try? await assinaturas.removerAssinatura(do: spot.id)
+                    Task { try? await assinaturas.removerAssinatura(do: spot.id) }
                 }
                 throw erroOriginal
             } catch {
@@ -114,7 +106,9 @@ final class SalvosCRUD {
             try await cliente.excluir(identificador, tipo: .spotSalvo)
         } catch ErroCloudKit.registroNaoEncontrado {
         }
-        try await assinaturas.removerAssinatura(do: spotID)
+        // Notificações são complementares e não precisam atrasar a interface.
+        alteracoes.dessalvar(spotID)
+        Task { try? await assinaturas.removerAssinatura(do: spotID) }
         notificacoes.cancelarLembretes(spotID: spotID, papel: .salvo)
     }
 
@@ -137,9 +131,8 @@ final class SalvosCRUD {
     func listar() async throws -> [SpotSalvo] {
         let contexto = try await autorizacao.contextoAtual()
         let salvos = try await listarRegistros(do: contexto.usuario)
-        try await assinaturas.reconciliarAssinaturas(
-            com: Set(salvos.map(\.spotID))
-        )
+        let identificadores = Set(salvos.map(\.spotID))
+        Task { try? await assinaturas.reconciliarAssinaturas(com: identificadores) }
         return salvos
     }
 
@@ -172,10 +165,13 @@ final class SalvosCRUD {
             guard let spot = spots[salvo.spotID] else { return nil }
             return ItemSpotSalvo(registro: salvo, spot: spot)
         }
-        try? await notificacoes.sincronizarLembretes(
-            eventos: itens.map(\.spot),
-            papel: .salvo
-        )
+        let eventosParaLembretes = itens.map(\.spot)
+        Task {
+            try? await notificacoes.sincronizarLembretes(
+                eventos: eventosParaLembretes,
+                papel: .salvo
+            )
+        }
         return itens
     }
 
@@ -201,9 +197,11 @@ final class SalvosCRUD {
             de: salvo,
             existente: registroSalvo
         )
-        return try ConversorRegistroCloudKit.spotSalvo(
+        let atualizado = try ConversorRegistroCloudKit.spotSalvo(
             de: try await cliente.salvar(alterado)
         )
+        alteracoes.marcarComoVisualizado(atualizado, spot: spot)
+        return atualizado
     }
 
     func processarNotificacao(
@@ -254,12 +252,18 @@ final class SalvosCRUD {
     private func finalizarSalvamento(
         _ salvo: SpotSalvo,
         spot: Spot
-    ) async -> SpotSalvo {
-        _ = try? await notificacoes.prepararSistema()
-        try? await notificacoes.agendarLembretes(
-            para: spot,
-            papel: .salvo
-        )
+    ) -> SpotSalvo {
+        alteracoes.salvar(salvo, spot: spot)
+        Task {
+            try? await assinaturas.garantirAssinatura(para: spot.id)
+            let estado = await notificacoes.verificarPermissao()
+            guard estado == .autorizada || estado == .provisoria else { return }
+            notificacoes.registrarParaNotificacoesRemotas()
+            try? await notificacoes.agendarLembretes(
+                para: spot,
+                papel: .salvo
+            )
+        }
         return salvo
     }
 

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 enum FiltroMeusEspacos: String, CaseIterable, Identifiable {
@@ -18,10 +19,14 @@ enum FiltroMeusEspacos: String, CaseIterable, Identifiable {
 @MainActor
 @Observable
 final class MeusEspacosViewModel {
+    @ObservationIgnored private var alteracoes: AlteracoesSpots?
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
+    @ObservationIgnored private var usuarioID: UUID?
     private(set) var cadastro: CadastrarSpotViewModel?
     let fotosSpots: FotosSpotsViewModel
     private(set) var espacos: [Spot] = []
     private(set) var estaCarregando = false
+    private(set) var carregouDados = false
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
     var filtroSelecionado: FiltroMeusEspacos = .disponiveis
@@ -55,6 +60,12 @@ final class MeusEspacosViewModel {
             cadastro.tipoSelecionado = .espaco
             return cadastro
         }
+        usuarioID = sessao.usuarioAtual?.id
+        alteracoes = sessao.alteracoesSpots
+        observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
     }
 
     func iniciarCadastro() {
@@ -79,11 +90,14 @@ final class MeusEspacosViewModel {
         guard !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
-        fotosSpots.limpar()
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         do {
             espacos = try await crud.listarDoUsuarioAtual(tipo: .espaco)
+            carregouDados = true
         } catch is CancellationError {
             return
         } catch {
@@ -92,17 +106,25 @@ final class MeusEspacosViewModel {
     }
 
     func definirAtivo(_ estaAtivo: Bool, para id: UUID) async {
-        guard spotEmAlteracao == nil else { return }
+        guard spotEmAlteracao == nil,
+              let anterior = espacos.first(where: { $0.id == id }),
+              anterior.estaAtivo != estaAtivo else { return }
         spotEmAlteracao = id
         mensagemDeErro = nil
         defer { spotEmAlteracao = nil }
+
+        var otimista = anterior
+        otimista.estaAtivo = estaAtivo
+        substituir(otimista)
 
         do {
             let atualizado = try await crud.definirAtivo(estaAtivo, para: id)
             substituir(atualizado)
         } catch is CancellationError {
+            substituir(anterior)
             return
         } catch {
+            substituir(anterior)
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -134,6 +156,17 @@ final class MeusEspacosViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    private func aplicarAlteracoes() {
+        guard let alteracoes, let usuarioID else { return }
+        let pendente = espacos.first { $0.id == spotEmAlteracao }
+        espacos = alteracoes.consolidar(espacos) {
+            $0.tipo == .espaco && $0.proprietarioID == usuarioID
+        }
+        if let pendente, !alteracoes.excluidos.contains(pendente.id) {
+            substituir(pendente)
+        }
     }
 
     private func substituir(_ spot: Spot) {

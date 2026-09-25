@@ -6,11 +6,13 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 @MainActor
 @Observable
 final class DetalhesSpotViewModel {
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     private(set) var spot: Spot?
     private(set) var fotos: [FotoDisponivel] = []
     private(set) var estaSalvo = false
@@ -51,6 +53,10 @@ final class DetalhesSpotViewModel {
         self.salvosCRUD = salvosCRUD
         self.localizacao = localizacao
         self.notificacoes = notificacoes
+        observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
     }
 
     convenience init(spotID: UUID, sessao: SessaoUsuario) {
@@ -69,7 +75,10 @@ final class DetalhesSpotViewModel {
         guard !estaCarregando, !estaAlterandoSalvo, !estaExcluindo else { return }
         estaCarregando = true
         mensagemDeErro = nil
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         carregouEstadoSalvo = false
         do {
@@ -128,20 +137,24 @@ final class DetalhesSpotViewModel {
         mensagemDeErro = nil
         defer { estaAlterandoSalvo = false }
 
+        let estavaSalvo = estaSalvo
+        estaSalvo.toggle()
+
         do {
-            if estaSalvo {
+            if estavaSalvo {
                 try await salvosCRUD.dessalvar(spotID: spot.id)
-                estaSalvo = false
             } else {
                 _ = try await salvosCRUD.salvar(spotID: spot.id)
-                estaSalvo = true
                 await prepararNotificacoes()
             }
         } catch ErroCloudKit.operacaoCancelada {
+            estaSalvo = estavaSalvo
             return
         } catch is CancellationError {
+            estaSalvo = estavaSalvo
             return
         } catch {
+            estaSalvo = estavaSalvo
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -241,9 +254,33 @@ final class DetalhesSpotViewModel {
         mensagemDeErro = nil
     }
 
+    private func aplicarAlteracoes() {
+        let alteracoes = sessao.alteracoesSpots
+        if alteracoes.excluidos.contains(spotID) {
+            spot = nil
+            fotos = []
+            return
+        }
+        if let atualizado = alteracoes.spots[spotID],
+           atualizado.versao >= (spot?.versao ?? 0), atualizado != spot {
+            receberAtualizacao(atualizado)
+        }
+        if !estaAlterandoSalvo {
+            if alteracoes.salvos[spotID] != nil {
+                estaSalvo = true
+                carregouEstadoSalvo = true
+            } else if alteracoes.removidosDosSalvos.contains(spotID) {
+                estaSalvo = false
+                carregouEstadoSalvo = true
+            }
+        }
+    }
+
     func receberAtualizacao(_ spotAtualizado: Spot) {
-        guard spotAtualizado.id == spotID else { return }
+        guard spotAtualizado.id == spotID, spotAtualizado != spot else { return }
+        let fotosMudaram = spot?.fotoIDs != spotAtualizado.fotoIDs
         spot = spotAtualizado
+        guard fotosMudaram else { return }
         fotos = []
         Task { await carregarFotosAtualizadas() }
     }
@@ -251,7 +288,9 @@ final class DetalhesSpotViewModel {
     private func carregarFotosAtualizadas() async {
         guard let spot else { return }
         do {
-            fotos = try await fotoCRUD.buscarFotos(para: spot)
+            let carregadas = try await fotoCRUD.buscarFotos(para: spot)
+            guard self.spot?.fotoIDs == spot.fotoIDs else { return }
+            fotos = carregadas
         } catch is CancellationError {
             return
         } catch {

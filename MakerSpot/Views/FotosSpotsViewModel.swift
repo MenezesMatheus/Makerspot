@@ -16,6 +16,7 @@ final class FotosSpotsViewModel {
     private let fotoCRUD: FotoCRUD
     @ObservationIgnored private var fotoIDsConhecidos: [UUID: [UUID]] = [:]
     @ObservationIgnored private var spotsSemFoto: Set<UUID> = []
+    @ObservationIgnored private var requisicoes: [UUID: UUID] = [:]
 
     init(fotoCRUD: FotoCRUD) {
         self.fotoCRUD = fotoCRUD
@@ -36,6 +37,8 @@ final class FotosSpotsViewModel {
 
     func carregarFotoPrincipal(do spot: Spot) async {
         if fotoIDsConhecidos[spot.id] != spot.fotoIDs {
+            requisicoes[spot.id] = nil
+            spotsEmCarregamento.remove(spot.id)
             fotosPrincipais[spot.id] = nil
             spotsSemFoto.remove(spot.id)
             fotoIDsConhecidos[spot.id] = spot.fotoIDs
@@ -51,10 +54,19 @@ final class FotosSpotsViewModel {
             return
         }
 
-        defer { spotsEmCarregamento.remove(spot.id) }
+        let requisicao = UUID()
+        requisicoes[spot.id] = requisicao
+        defer {
+            if requisicoes[spot.id] == requisicao {
+                requisicoes[spot.id] = nil
+                spotsEmCarregamento.remove(spot.id)
+            }
+        }
 
         do {
-            if let foto = try await fotoCRUD.buscarFotoPrincipal(para: spot) {
+            let foto = try await fotoCRUD.buscarFotoPrincipal(para: spot)
+            guard requisicoes[spot.id] == requisicao else { return }
+            if let foto {
                 fotosPrincipais[spot.id] = foto
             } else {
                 spotsSemFoto.insert(spot.id)
@@ -64,11 +76,13 @@ final class FotosSpotsViewModel {
         } catch is CancellationError {
             return
         } catch {
+            guard requisicoes[spot.id] == requisicao else { return }
             mensagemDeErro = error.localizedDescription
         }
     }
 
     func removerSpot(_ spotID: UUID) {
+        requisicoes[spotID] = nil
         fotosPrincipais[spotID] = nil
         fotoIDsConhecidos[spotID] = nil
         spotsSemFoto.remove(spotID)
@@ -76,6 +90,7 @@ final class FotosSpotsViewModel {
     }
 
     func limpar() {
+        requisicoes = [:]
         fotosPrincipais = [:]
         spotsEmCarregamento = []
         mensagemDeErro = nil

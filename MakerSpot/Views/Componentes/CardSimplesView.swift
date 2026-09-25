@@ -190,7 +190,11 @@ struct CardSimplesView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
-                        Text(dados.tipo.rotulo)
+                        Text(
+                            pertenceAoUsuario
+                                ? "\(dados.tipo.rotulo) • Seu Spot"
+                                : dados.tipo.rotulo
+                        )
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -246,9 +250,8 @@ struct CardSimplesView: View {
         ):
             Button(action: aoAlternar) {
                 Group {
-                    if estaProcessando {
-                        ProgressView()
-                            .tint(.white)
+                    if !podeSalvar {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
                     } else {
                         Image(systemName: estaSalvo ? "bookmark.fill" : "bookmark")
                     }
@@ -261,7 +264,9 @@ struct CardSimplesView: View {
             .disabled(!podeSalvar || estaProcessando)
             .opacity(podeSalvar ? 1 : 0.45)
             .accessibilityLabel(
-                estaSalvo ? "Remover dos salvos" : "Salvar Spot"
+                !podeSalvar
+                    ? "Seu Spot"
+                    : (estaSalvo ? "Remover dos salvos" : "Salvar Spot")
             )
             .accessibilityValue(estaProcessando ? "Atualizando" : "")
 
@@ -270,31 +275,31 @@ struct CardSimplesView: View {
             estaProcessando,
             aoAlternar
         ):
-            ZStack {
-                Toggle(
-                    "Oferta ativa",
-                    isOn: Binding(
-                        get: { estaAtivo },
-                        set: { novoValor in
-                            guard !estaProcessando else { return }
-                            aoAlternar(novoValor)
-                        }
-                    )
+            Toggle(
+                "Oferta ativa",
+                isOn: Binding(
+                    get: { estaAtivo },
+                    set: { novoValor in
+                        guard !estaProcessando else { return }
+                        aoAlternar(novoValor)
+                    }
                 )
-                .labelsHidden()
-                .tint(dados.tipo.corDestaque)
-                .disabled(estaProcessando)
-                .opacity(estaProcessando ? 0 : 1)
-                .accessibilityLabel("Oferta ativa")
-                .accessibilityValue(estaAtivo ? "Ativada" : "Desativada")
-
-                if estaProcessando {
-                    ProgressView()
-                        .tint(.white)
-                        .accessibilityLabel("Atualizando oferta")
-                }
-            }
+            )
+            .labelsHidden()
+            .tint(dados.tipo.corDestaque)
+            .disabled(estaProcessando)
+            .accessibilityLabel("Oferta ativa")
+            .accessibilityValue(estaAtivo ? "Ativada" : "Desativada")
             .frame(minWidth: 52, minHeight: 44)
+        }
+    }
+
+    private var pertenceAoUsuario: Bool {
+        switch modo {
+        case .proprietario:
+            return true
+        case .visitante(_, _, let podeSalvar, _):
+            return !podeSalvar
         }
     }
 }

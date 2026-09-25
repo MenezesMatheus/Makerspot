@@ -63,7 +63,7 @@ struct TodosEspacosView: View {
             }
         }
         .task {
-            guard viewModel.espacos.isEmpty else { return }
+            guard !viewModel.carregouPrimeiraPagina else { return }
             await viewModel.carregarPrimeiraPagina()
         }
         .alert(
@@ -149,7 +149,7 @@ struct TodosEspacosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
                 .onAppear {

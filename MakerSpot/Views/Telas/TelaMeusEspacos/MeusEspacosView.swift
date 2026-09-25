@@ -77,7 +77,7 @@ struct MeusEspacosView: View {
             }
         }
         .task {
-            guard viewModel.espacos.isEmpty else { return }
+            guard !viewModel.carregouDados else { return }
             await viewModel.carregar()
         }
         .alert(
@@ -181,7 +181,7 @@ struct MeusEspacosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
                 .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)

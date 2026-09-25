@@ -65,18 +65,24 @@ final class AutorizacaoCRUD {
             throw ErroCRUD.usuarioNaoAutenticado
         }
 
-        let identificadorCloudKit = try await cliente.verificarConta()
-        guard usuario.cloudKitUserRecordName == identificadorCloudKit.recordName else {
-            throw ErroCRUD.contaCloudKitDivergente
+        let nomeContaCloudKit = try await sessao.validarContaCloudKit { [self] in
+            let identificador = try await cliente.verificarConta()
+            guard usuario.cloudKitUserRecordName == identificador.recordName else {
+                throw ErroCRUD.contaCloudKitDivergente
+            }
+            try await validarUsuarioAtivo(
+                cloudKitUserRecordName: identificador.recordName
+            )
+            return identificador.recordName
         }
-
-        try await validarUsuarioAtivo(
-            cloudKitUserRecordName: identificadorCloudKit.recordName
-        )
+        guard sessao.usuarioAtual?.id == usuario.id,
+              usuario.cloudKitUserRecordName == nomeContaCloudKit else {
+            throw ErroCRUD.usuarioNaoAutenticado
+        }
 
         return ContextoUsuarioCRUD(
             usuario: usuario,
-            identificadorCloudKit: identificadorCloudKit
+            identificadorCloudKit: CKRecord.ID(recordName: nomeContaCloudKit)
         )
     }
 
@@ -104,10 +110,39 @@ final class AutorizacaoCRUD {
         spot: Spot,
         contexto: ContextoUsuarioCRUD
     ) throws {
-        guard spot.proprietarioID == contexto.usuario.id,
-              registro.creatorUserRecordID == contexto.identificadorCloudKit else {
+        guard ehProprietario(
+            do: registro,
+            spot: spot,
+            contexto: contexto
+        ) else {
             throw ErroCRUD.somenteProprietario
         }
+    }
+
+    /// O UUID persistido é a identidade funcional do proprietário no app.
+    /// `creatorUserRecordID` não serve como segunda trava: dependendo do banco,
+    /// ambiente ou resposta do CloudKit, ele pode ser omitido ou representar o
+    /// proprietário da zona em vez do identificador retornado para a conta.
+    func ehProprietario(
+        do registro: CKRecord,
+        spot: Spot,
+        contexto: ContextoUsuarioCRUD
+    ) -> Bool {
+        _ = registro
+        return spot.proprietarioID == contexto.usuario.id
+    }
+
+    /// Usado para impedir ações que não fazem sentido no próprio conteúdo.
+    /// Considera as duas fontes para também proteger registros legados cujo
+    /// `proprietarioID` possa estar inconsistente.
+    func foiCriadoPeloUsuarioAtual(
+        _ registro: CKRecord,
+        spot: Spot,
+        contexto: ContextoUsuarioCRUD
+    ) -> Bool {
+        if spot.proprietarioID == contexto.usuario.id { return true }
+        return registro.creatorUserRecordID?.recordName
+            == contexto.identificadorCloudKit.recordName
     }
 }
 

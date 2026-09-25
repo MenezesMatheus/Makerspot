@@ -77,7 +77,7 @@ struct MeusEventosView: View {
             }
         }
         .task {
-            guard viewModel.eventos.isEmpty else { return }
+            guard !viewModel.carregouDados else { return }
             await viewModel.carregar()
         }
         .alert(
@@ -181,7 +181,7 @@ struct MeusEventosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
                 .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)

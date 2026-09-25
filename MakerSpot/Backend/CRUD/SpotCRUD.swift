@@ -29,6 +29,7 @@ struct PaginaSpots: Sendable {
 }
 
 final class SpotCRUD {
+    private let alteracoes: AlteracoesSpots
     private let cliente: ClienteCloudKit
     private let localizacao: ServicoLocalizacao
     private let autorizacao: AutorizacaoCRUD
@@ -41,6 +42,7 @@ final class SpotCRUD {
         notificacoes: Notificacoes = Notificacoes()
     ) {
         self.cliente = cliente
+        self.alteracoes = sessao.alteracoesSpots
         self.localizacao = localizacao
         self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
@@ -76,10 +78,8 @@ final class SpotCRUD {
         let criado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(registro)
         )
-        try? await notificacoes.agendarLembretes(
-            para: criado,
-            papel: .organizador
-        )
+        atualizarLembretesEmSegundoPlano(para: criado)
+        alteracoes.atualizar(criado)
         return criado
     }
 
@@ -147,12 +147,12 @@ final class SpotCRUD {
         )
         try ApoioCRUD.exigirSemFalhas(resultado.falhas)
         return resultado.registros.compactMap { registro in
-            guard registro.creatorUserRecordID?.recordName
-                    == contexto.identificadorCloudKit.recordName else {
-                return nil
-            }
             guard let spot = try? ApoioCRUD.spotValido(de: registro),
-                  spot.proprietarioID == contexto.usuario.id else {
+                  autorizacao.ehProprietario(
+                    do: registro,
+                    spot: spot,
+                    contexto: contexto
+                  ) else {
                 return nil
             }
             return spot
@@ -200,10 +200,8 @@ final class SpotCRUD {
         let editado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(alterado)
         )
-        try? await notificacoes.agendarLembretes(
-            para: editado,
-            papel: .organizador
-        )
+        atualizarLembretesEmSegundoPlano(para: editado)
+        alteracoes.atualizar(editado)
         return editado
     }
 
@@ -230,10 +228,8 @@ final class SpotCRUD {
         let atualizado = try ConversorRegistroCloudKit.spot(
             de: try await cliente.salvar(alterado)
         )
-        try? await notificacoes.agendarLembretes(
-            para: atualizado,
-            papel: .organizador
-        )
+        atualizarLembretesEmSegundoPlano(para: atualizado)
+        alteracoes.atualizar(atualizado)
         return atualizado
     }
 
@@ -250,6 +246,7 @@ final class SpotCRUD {
             contexto: contexto
         )
         try await cliente.excluir(registro.recordID, tipo: .spot)
+        alteracoes.excluir(spot.id)
         notificacoes.cancelarLembretes(
             spotID: spot.id,
             papel: .organizador
@@ -292,5 +289,14 @@ final class SpotCRUD {
         }
 
         return NSCompoundPredicate(andPredicateWithSubpredicates: predicados)
+    }
+
+    private func atualizarLembretesEmSegundoPlano(para spot: Spot) {
+        Task {
+            try? await notificacoes.agendarLembretes(
+                para: spot,
+                papel: .organizador
+            )
+        }
     }
 }

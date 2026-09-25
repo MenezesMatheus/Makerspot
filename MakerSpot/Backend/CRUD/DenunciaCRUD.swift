@@ -39,10 +39,11 @@ final class DenunciaCRUD {
             tipo: .spot
         )
         let spot = try ConversorRegistroCloudKit.spot(de: registroSpot)
-        guard let criadorSpot = registroSpot.creatorUserRecordID else {
-            throw ErroCRUD.respostaInconsistente
-        }
-        guard criadorSpot.recordName != contexto.identificadorCloudKit.recordName else {
+        guard !autorizacao.foiCriadoPeloUsuarioAtual(
+            registroSpot,
+            spot: spot,
+            contexto: contexto
+        ) else {
             throw ErroCRUD.spotProprioNaoPodeSerDenunciado
         }
 

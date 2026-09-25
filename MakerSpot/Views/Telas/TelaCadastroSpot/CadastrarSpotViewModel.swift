@@ -5,7 +5,6 @@
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
 //
 
-import CoreTransferable
 import Foundation
 import ImageIO
 import Observation
@@ -19,54 +18,72 @@ struct FotoCadastroSpot: Identifiable, Equatable {
     let miniaturaURL: URL
 }
 
-struct FotoImportadaCadastro: Transferable {
+struct FotoImportadaCadastro {
     let foto: FotoCadastroSpot
 
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .image) { recebido in
-            let gerenciador = FileManager.default
-            let tamanho = try recebido.file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard tamanho > 0, tamanho <= 30 * 1_024 * 1_024 else {
-                throw ErroCRUD.dadosInvalidos(descricao: "Cada foto deve ter até 30 MB.")
-            }
+    static func importar(_ dados: Data) throws -> Self {
+        guard !dados.isEmpty, dados.count <= 30 * 1_024 * 1_024 else {
+            throw ErroCRUD.dadosInvalidos(descricao: "Cada foto deve ter até 30 MB.")
+        }
 
-            let base = gerenciador.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            let extensao = recebido.file.pathExtension.isEmpty ? "img" : recebido.file.pathExtension
-            let arquivo = base.appendingPathExtension(extensao)
-            let miniatura = base.appendingPathExtension("thumb.jpg")
+        guard let fonte = CGImageSourceCreateWithData(dados as CFData, nil),
+              CGImageSourceGetCount(fonte) > 0,
+              let propriedades = CGImageSourceCopyPropertiesAtIndex(fonte, 0, nil)
+                as? [CFString: Any],
+              let largura = propriedades[kCGImagePropertyPixelWidth] as? NSNumber,
+              let altura = propriedades[kCGImagePropertyPixelHeight] as? NSNumber,
+              largura.intValue > 0,
+              altura.intValue > 0,
+              largura.intValue <= 20_000,
+              altura.intValue <= 20_000 else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Selecione uma imagem válida com dimensões de até 20.000 pixels."
+            )
+        }
 
-            do {
-                try gerenciador.copyItem(at: recebido.file, to: arquivo)
-                guard let fonte = CGImageSourceCreateWithURL(arquivo as CFURL, nil),
-                      let imagem = CGImageSourceCreateThumbnailAtIndex(fonte, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 480
-                      ] as CFDictionary),
-                      let destino = CGImageDestinationCreateWithURL(
-                        miniatura as CFURL,
-                        UTType.jpeg.identifier as CFString,
-                        1,
-                        nil
-                      ) else {
-                    throw ErroCRUD.dadosInvalidos(descricao: "Selecione uma imagem válida.")
-                }
-                CGImageDestinationAddImage(destino, imagem, nil)
-                guard CGImageDestinationFinalize(destino) else {
-                    throw ErroCRUD.dadosInvalidos(
-                        descricao: "Não foi possível preparar a foto."
-                    )
-                }
-                try Task.checkCancellation()
-                return Self(foto: FotoCadastroSpot(
-                    arquivoURL: arquivo,
-                    miniaturaURL: miniatura
-                ))
-            } catch {
-                try? gerenciador.removeItem(at: arquivo)
-                try? gerenciador.removeItem(at: miniatura)
-                throw error
+        let extensao: String
+        if let tipoFonte = CGImageSourceGetType(fonte) {
+            extensao = UTType(tipoFonte as String)?.preferredFilenameExtension
+                ?? "img"
+        } else {
+            extensao = "img"
+        }
+        let gerenciador = FileManager.default
+        let base = gerenciador.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString.lowercased())
+        let arquivo = base.appendingPathExtension(extensao)
+        let miniatura = base.appendingPathExtension("thumb.jpg")
+
+        do {
+            try dados.write(to: arquivo, options: .atomic)
+            guard let imagem = CGImageSourceCreateThumbnailAtIndex(fonte, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 480
+            ] as CFDictionary),
+            let destino = CGImageDestinationCreateWithURL(
+                miniatura as CFURL,
+                UTType.jpeg.identifier as CFString,
+                1,
+                nil
+            ) else {
+                throw ErroCRUD.dadosInvalidos(descricao: "Selecione uma imagem válida.")
             }
+            CGImageDestinationAddImage(destino, imagem, nil)
+            guard CGImageDestinationFinalize(destino) else {
+                throw ErroCRUD.dadosInvalidos(
+                    descricao: "Não foi possível preparar a foto."
+                )
+            }
+            try Task.checkCancellation()
+            return Self(foto: FotoCadastroSpot(
+                arquivoURL: arquivo,
+                miniaturaURL: miniatura
+            ))
+        } catch {
+            try? gerenciador.removeItem(at: arquivo)
+            try? gerenciador.removeItem(at: miniatura)
+            throw error
         }
     }
 }
@@ -381,9 +398,10 @@ final class CadastrarSpotViewModel {
         for item in itens {
             do {
                 try Task.checkCancellation()
-                guard let importada = try await item.loadTransferable(type: FotoImportadaCadastro.self) else {
+                guard let dados = try await item.loadTransferable(type: Data.self) else {
                     throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível ler a imagem selecionada.")
                 }
+                let importada = try FotoImportadaCadastro.importar(dados)
                 if Task.isCancelled {
                     apagarArquivos(da: importada.foto)
                     return
