@@ -11,6 +11,7 @@ import Observation
 @MainActor
 @Observable
 final class SpotsViewModel {
+    private(set) var cadastro: CadastrarSpotViewModel?
     let fotosSpots: FotosSpotsViewModel
     private(set) var spots: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
@@ -28,6 +29,7 @@ final class SpotsViewModel {
     private let localizacaoUsuario: ServicoLocalizacaoUsuario
     private let usuarioAtualID: () -> UUID?
     private let tamanhoDaPagina: Int
+    @ObservationIgnored private var criarCadastro: (() -> CadastrarSpotViewModel)?
     @ObservationIgnored private var cursor: CursorPaginaSpots?
     @ObservationIgnored private var identificadoresCarregados: Set<UUID> = []
     @ObservationIgnored private var carregouPrimeiraPagina = false
@@ -75,6 +77,21 @@ final class SpotsViewModel {
             usuarioAtualID: { [weak sessao] in sessao?.usuarioAtual?.id },
             tamanhoDaPagina: tamanhoDaPagina
         )
+        criarCadastro = { CadastrarSpotViewModel(sessao: sessao) }
+    }
+
+    func iniciarCadastro() {
+        guard cadastro == nil else { return }
+        cadastro = criarCadastro?()
+    }
+
+    func encerrarCadastro() {
+        if let spot = cadastro?.spotCriado {
+            spots.removeAll { $0.id == spot.id }
+            spots.insert(spot, at: 0)
+            identificadoresCarregados.insert(spot.id)
+        }
+        cadastro = nil
     }
 
     func carregarPrimeiraPagina(tipo: TipoSpot? = nil) async {

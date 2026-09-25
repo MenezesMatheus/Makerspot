@@ -9,7 +9,6 @@ import SwiftUI
 
 struct SpotsView: View {
     @Bindable private var viewModel: SpotsViewModel
-    @State private var mostrandoCadastro = false
 
     init(viewModel: SpotsViewModel) {
         self.viewModel = viewModel
@@ -35,7 +34,7 @@ struct SpotsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Adicionar Spot", systemImage: "plus") {
-                        mostrandoCadastro = true
+                        viewModel.iniciarCadastro()
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderedProminent)
@@ -45,8 +44,13 @@ struct SpotsView: View {
                     .accessibilityLabel("Adicionar Spot")
                 }
             }
-            .navigationDestination(isPresented: $mostrandoCadastro) {
-                CadastrarSpotView()
+            .navigationDestination(isPresented: Binding(
+                get: { viewModel.cadastro != nil },
+                set: { if !$0 { viewModel.encerrarCadastro() } }
+            )) {
+                if let cadastro = viewModel.cadastro {
+                    CadastrarSpotView(viewModel: cadastro)
+                }
             }
             .task {
                 guard viewModel.spots.isEmpty else { return }
