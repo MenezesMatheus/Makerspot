@@ -241,6 +241,24 @@ final class DetalhesSpotViewModel {
         mensagemDeErro = nil
     }
 
+    func receberAtualizacao(_ spotAtualizado: Spot) {
+        guard spotAtualizado.id == spotID else { return }
+        spot = spotAtualizado
+        fotos = []
+        Task { await carregarFotosAtualizadas() }
+    }
+
+    private func carregarFotosAtualizadas() async {
+        guard let spot else { return }
+        do {
+            fotos = try await fotoCRUD.buscarFotos(para: spot)
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
+    }
+
     private func prepararNotificacoes() async {
         do {
             let autorizada: Bool

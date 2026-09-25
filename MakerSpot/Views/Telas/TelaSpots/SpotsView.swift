@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct SpotsView: View {
+    @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: SpotsViewModel
-    @State private var mostrandoCadastro = false
 
     init(viewModel: SpotsViewModel) {
         self.viewModel = viewModel
@@ -35,7 +35,7 @@ struct SpotsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Adicionar Spot", systemImage: "plus") {
-                        mostrandoCadastro = true
+                        viewModel.iniciarCadastro()
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderedProminent)
@@ -45,8 +45,13 @@ struct SpotsView: View {
                     .accessibilityLabel("Adicionar Spot")
                 }
             }
-            .navigationDestination(isPresented: $mostrandoCadastro) {
-                CadastrarSpotView()
+            .navigationDestination(isPresented: Binding(
+                get: { viewModel.cadastro != nil },
+                set: { if !$0 { viewModel.encerrarCadastro() } }
+            )) {
+                if let cadastro = viewModel.cadastro {
+                    CadastrarSpotView(viewModel: cadastro)
+                }
             }
             .task {
                 guard viewModel.spots.isEmpty else { return }
@@ -108,7 +113,7 @@ struct SpotsView: View {
         VStack(alignment: .leading, spacing: 18) {
             cabecalhoSecao(
                 titulo: "Eventos",
-                destino: TodosEventosView()
+                destino: TodosEventosView(sessao: sessao)
             )
 
             if !viewModel.eventosEmDestaque.isEmpty {
@@ -143,7 +148,7 @@ struct SpotsView: View {
         VStack(alignment: .leading, spacing: 18) {
             cabecalhoSecao(
                 titulo: "Espaços",
-                destino: TodosEspacosView()
+                destino: TodosEspacosView(sessao: sessao)
             )
 
             if !viewModel.espacosEmDestaque.isEmpty {
@@ -204,6 +209,8 @@ struct SpotsView: View {
 }
 
 #Preview {
-    SpotsView(sessao: SessaoUsuario())
+    let sessao = SessaoUsuario()
+    SpotsView(sessao: sessao)
+        .environment(sessao)
         .preferredColorScheme(.dark)
 }
