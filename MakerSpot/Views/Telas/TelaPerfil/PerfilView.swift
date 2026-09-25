@@ -282,6 +282,8 @@ struct PerfilView: View {
 }
 
 #Preview {
-    PerfilView(sessao: SessaoUsuario())
+    let sessao = SessaoUsuario()
+    PerfilView(sessao: sessao)
+        .environment(sessao)
         .preferredColorScheme(.dark)
 }

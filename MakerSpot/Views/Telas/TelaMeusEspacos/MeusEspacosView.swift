@@ -6,61 +6,103 @@
 //
 
 import SwiftUI
- 
+
 struct MeusEspacosView: View {
-    @Environment(\.dismiss) private var dismiss
- 
     @State private var viewModel: MeusEspacosViewModel
-    @State private var mostrarErro = false
-    @State private var mostrarCriarEspaco = false
     @State private var idParaExcluir: UUID?
     @State private var mostrarConfirmacaoExclusao = false
- 
+
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: MeusEspacosViewModel(sessao: sessao))
     }
- 
+
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.06, green: 0.15, blue: 0.4),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
- 
-            VStack(alignment: .leading, spacing: 24) {
-                barraSuperior
- 
-                cabecalho
- 
-                conteudo
+        @Bindable var viewModel = viewModel
+
+        ZStack(alignment: .top) {
+            fundo
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    Text("Gerencie os espaços e mantenha tudo atualizado")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Picker(
+                        "Disponibilidade",
+                        selection: $viewModel.filtroSelecionado
+                    ) {
+                        ForEach(FiltroMeusEspacos.allCases) { filtro in
+                            Text(filtro.rawValue).tag(filtro)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    conteudo
+                }
+                .padding(.bottom, 32)
             }
-            .padding(.top, 8)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .refreshable {
+                await viewModel.carregar()
+            }
+
+            if viewModel.estaCarregando, viewModel.espacos.isEmpty {
+                ProgressView("Carregando espaços…")
+                    .padding(.top, 96)
+            }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Meus Espaços")
+        .toolbarTitleDisplayMode(.inlineLarge)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Adicionar espaço", systemImage: "plus") {
+                    viewModel.iniciarCadastro()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .controlSize(.extraLarge)
+                .tint(.accentColor)
+                .accessibilityLabel("Adicionar espaço")
+            }
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { viewModel.cadastro != nil },
+            set: { if !$0 { viewModel.encerrarCadastro() } }
+        )) {
+            if let cadastro = viewModel.cadastro {
+                CadastrarSpotView(viewModel: cadastro)
+            }
+        }
         .task {
             guard viewModel.espacos.isEmpty else { return }
             await viewModel.carregar()
         }
-        .onChange(of: viewModel.mensagemDeErro) { _, novoValor in
-            mostrarErro = novoValor != nil
-        }
-        .alert("Não foi possível carregar", isPresented: $mostrarErro) {
+        .alert(
+            "Não foi possível carregar",
+            isPresented: Binding(
+                get: { viewModel.mensagemDeErro != nil },
+                set: { if !$0 { viewModel.limparErro() } }
+            )
+        ) {
             Button("Tentar novamente") {
                 Task { await viewModel.carregar() }
             }
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) {
+                viewModel.limparErro()
+            }
         } message: {
             Text(viewModel.mensagemDeErro ?? "Tente novamente em instantes.")
         }
         .alert("Excluir espaço?", isPresented: $mostrarConfirmacaoExclusao) {
             Button("Excluir", role: .destructive) {
                 guard let id = idParaExcluir else { return }
-                Task { await viewModel.excluir(id: id) }
+                Task {
+                    _ = await viewModel.excluir(id: id)
+                    idParaExcluir = nil
+                }
             }
             Button("Cancelar", role: .cancel) {
                 idParaExcluir = nil
@@ -68,127 +110,112 @@ struct MeusEspacosView: View {
         } message: {
             Text("Essa ação não pode ser desfeita.")
         }
-        .sheet(isPresented: $mostrarCriarEspaco) {
-            // TODO: apresentar a tela de criação de espaço quando estiver disponível
-        }
     }
- 
-    // MARK: - Cabeçalho
- 
-    private var barraSuperior: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(white: 0.12))
-                    .clipShape(Circle())
-            }
- 
-            Spacer()
- 
-            Button(action: { mostrarCriarEspaco = true }) {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(red: 0.85, green: 0.1, blue: 0.47))
-                    .clipShape(Circle())
-            }
-        }
-        .padding(.horizontal)
+
+    private var fundo: some View {
+        LinearGradient(
+            colors: [
+                Color("CorEspaco").opacity(0.4),
+                .black,
+                .black.opacity(0.6),
+                .black.opacity(0.6),
+                .black.opacity(0.7),
+                .black.opacity(0.8)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
- 
-    private var cabecalho: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Meus Espaços")
-                .font(.largeTitle.bold())
-                .foregroundColor(.white)
- 
-            Text("Gerencie os espaços e mantenha tudo atualizado")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-        }
-        .padding(.horizontal)
-    }
- 
-    // conteudo da tela
- 
+
     @ViewBuilder
     private var conteudo: some View {
         if viewModel.espacos.isEmpty && viewModel.estaCarregando {
-            Spacer()
-            ProgressView()
-                .tint(.white)
-                .frame(maxWidth: .infinity)
-            Spacer()
-        } else if viewModel.espacos.isEmpty {
-            Spacer()
+            Color.clear.frame(height: 120)
+        } else if viewModel.espacosFiltrados.isEmpty {
             estadoVazio
-            Spacer()
         } else {
             listaDeEspacos
         }
     }
- 
+
     private var estadoVazio: some View {
         VStack(spacing: 12) {
             Image(systemName: "mappin.slash")
                 .font(.system(size: 36))
-                .foregroundColor(.gray)
-            Text("Você ainda não publicou espaços")
+                .foregroundStyle(.secondary)
+
+            Text(tituloEstadoVazio)
                 .font(.headline)
-                .foregroundColor(.white)
-            Text("Toque em + para cadastrar seu primeiro espaço.")
+                .foregroundStyle(.primary)
+
+            Text(mensagemEstadoVazio)
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 48)
     }
- 
+
     private var listaDeEspacos: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                ForEach(viewModel.espacos) { spot in
-                    CardSimplesView(
-                        dados: CardSimplesDados(
-                            spot: spot,
-                            imagem: imagem(do: spot)
-                        ),
-                        modo: .proprietario(
-                            estaAtivo: spot.estaAtivo,
-                            estaProcessando: viewModel.spotEmAlteracao == spot.id,
-                            aoAlternar: { novoValor in
-                                Task { await viewModel.definirAtivo(novoValor, para: spot.id) }
+        LazyVStack(spacing: 16) {
+            ForEach(viewModel.espacosFiltrados) { spot in
+                CardSimplesView(
+                    dados: CardSimplesDados(
+                        spot: spot,
+                        imagem: imagem(do: spot)
+                    ),
+                    modo: .proprietario(
+                        estaAtivo: spot.estaAtivo,
+                        estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        aoAlternar: { novoValor in
+                            Task {
+                                await viewModel.definirAtivo(
+                                    novoValor,
+                                    para: spot.id
+                                )
                             }
-                        ),
-                        aoSelecionar: {}
-                    )
-                    .task {
-                        await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
-                    }
-                    .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)
-                    .disabled(viewModel.spotEmAlteracao == spot.id)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            idParaExcluir = spot.id
-                            mostrarConfirmacaoExclusao = true
-                        } label: {
-                            Label("Excluir", systemImage: "trash")
                         }
+                    ),
+                    aoSelecionar: {}
+                )
+                .task {
+                    await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
+                }
+                .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)
+                .disabled(viewModel.spotEmAlteracao == spot.id)
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        idParaExcluir = spot.id
+                        mostrarConfirmacaoExclusao = true
+                    } label: {
+                        Label("Excluir", systemImage: "trash")
                     }
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
-        }
-        .refreshable {
-            await viewModel.carregar()
         }
     }
- 
+
+    private var tituloEstadoVazio: String {
+        switch viewModel.filtroSelecionado {
+        case .disponiveis:
+            return "Você ainda não publicou espaços disponíveis"
+        case .indisponiveis:
+            return "Nenhum espaço indisponível"
+        }
+    }
+
+    private var mensagemEstadoVazio: String {
+        switch viewModel.filtroSelecionado {
+        case .disponiveis:
+            return "Toque em + para cadastrar seu primeiro espaço."
+        case .indisponiveis:
+            return "Os espaços desativados aparecerão aqui."
+        }
+    }
+
     private func imagem(do spot: Spot) -> ImagemCardSimples {
         guard let foto = viewModel.fotosSpots.fotoPrincipal(do: spot) else {
             return .placeholder
@@ -196,9 +223,12 @@ struct MeusEspacosView: View {
         return .arquivo(foto.arquivoURL)
     }
 }
- 
+
 #Preview {
+    let sessao = SessaoUsuario()
     NavigationStack {
-        MeusEspacosView(sessao: SessaoUsuario())
+        MeusEspacosView(sessao: sessao)
     }
+    .environment(sessao)
+    .preferredColorScheme(.dark)
 }

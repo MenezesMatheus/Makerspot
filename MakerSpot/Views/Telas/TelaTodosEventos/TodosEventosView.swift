@@ -1,180 +1,169 @@
 //
-//  MeusEspacosView.swift
+//  TodosEventosView.swift
 //  MakerSpot
 //
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
 //
 
 import SwiftUI
- 
+
 struct TodosEventosView: View {
-    @Environment(\.dismiss) private var dismiss
- 
     @State private var viewModel: TodosEventosViewModel
-    @State private var mostrarErro = false
-    @State private var mostrarCriarEspaco = false
- 
+
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: TodosEventosViewModel(sessao: sessao))
     }
- 
+
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.42, green: 0.22, blue: 0.06),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
- 
-            VStack(alignment: .leading, spacing: 24) {
-                barraSuperior
- 
-                cabecalho
- 
-                conteudo
+        ZStack(alignment: .top) {
+            fundo
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    Text("Participe e compartilhe")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    conteudo
+                }
+                .padding(.bottom, 32)
             }
-            .padding(.top, 8)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .refreshable {
+                await viewModel.recarregar()
+            }
+
+            if viewModel.estaCarregando, viewModel.eventos.isEmpty {
+                ProgressView("Carregando eventos…")
+                    .padding(.top, 96)
+            }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Eventos")
+        .toolbarTitleDisplayMode(.inlineLarge)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Adicionar evento", systemImage: "plus") {
+                    viewModel.iniciarCadastro()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .controlSize(.extraLarge)
+                .tint(.accentColor)
+                .accessibilityLabel("Adicionar evento")
+            }
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { viewModel.cadastro != nil },
+            set: { if !$0 { viewModel.encerrarCadastro() } }
+        )) {
+            if let cadastro = viewModel.cadastro {
+                CadastrarSpotView(viewModel: cadastro)
+            }
+        }
         .task {
             guard viewModel.eventos.isEmpty else { return }
             await viewModel.carregarPrimeiraPagina()
         }
-        .onChange(of: viewModel.mensagemDeErro) { _, novoValor in
-            mostrarErro = novoValor != nil
-        }
-        .alert("Não foi possível carregar", isPresented: $mostrarErro) {
+        .alert(
+            "Não foi possível carregar",
+            isPresented: Binding(
+                get: { viewModel.mensagemDeErro != nil },
+                set: { if !$0 { viewModel.limparErro() } }
+            )
+        ) {
             Button("Tentar novamente") {
                 Task { await viewModel.recarregar() }
             }
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) {
+                viewModel.limparErro()
+            }
         } message: {
             Text(viewModel.mensagemDeErro ?? "Tente novamente em instantes.")
         }
-        .sheet(isPresented: $mostrarCriarEspaco) {
-            // apresentar a tela de cadastro de evento quando disponivel
-        }
     }
- 
-    // cabecalho 
- 
-    private var barraSuperior: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(white: 0.12))
-                    .clipShape(Circle())
-            }
- 
-            Spacer()
- 
-            Button(action: { mostrarCriarEspaco = true }) {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(red: 0.85, green: 0.1, blue: 0.47))
-                    .clipShape(Circle())
-            }
-        }
-        .padding(.horizontal)
+
+    private var fundo: some View {
+        LinearGradient(
+            colors: [
+                Color("CorEvento").opacity(0.4),
+                .black,
+                .black.opacity(0.6),
+                .black.opacity(0.6),
+                .black.opacity(0.7),
+                .black.opacity(0.8)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
- 
-    private var cabecalho: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Eventos")
-                .font(.largeTitle.bold())
-                .foregroundColor(.white)
- 
-            Text("Participe e Compartilhe")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-        }
-        .padding(.horizontal)
-    }
- 
-    // conteudo da tela
- 
+
     @ViewBuilder
     private var conteudo: some View {
         if viewModel.eventos.isEmpty && viewModel.estaCarregando {
-            Spacer()
-            ProgressView()
-                .tint(.white)
-                .frame(maxWidth: .infinity)
-            Spacer()
+            Color.clear.frame(height: 120)
         } else if viewModel.eventos.isEmpty {
-            Spacer()
             estadoVazio
-            Spacer()
         } else {
-            listaDeEspacos
+            listaDeEventos
         }
     }
- 
+
     private var estadoVazio: some View {
         VStack(spacing: 12) {
-            Image(systemName: "mappin.slash")
+            Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 36))
-                .foregroundColor(.gray)
-            Text("Nenhum espaço encontrado")
+                .foregroundStyle(.secondary)
+
+            Text("Nenhum evento encontrado")
                 .font(.headline)
-                .foregroundColor(.white)
-            Text("Novos espaços aparecem aqui assim que forem publicados.")
+                .foregroundStyle(.primary)
+
+            Text("Novos eventos aparecem aqui assim que forem publicados.")
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 48)
     }
- 
-    private var listaDeEspacos: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                ForEach(viewModel.eventos) { spot in
-                    CardSimplesView(
-                        dados: CardSimplesDados(
-                            spot: spot,
-                            imagem: imagem(do: spot)
-                        ),
-                        modo: .visitante(
-                            estaSalvo: viewModel.estaSalvo(spot),
-                            estaProcessando: viewModel.estaAlterandoSalvo(spot),
-                            podeSalvar: viewModel.podeSalvar(spot),
-                            aoAlternar: {
-                                Task { await viewModel.alternarSalvo(do: spot) }
-                            }
-                        ),
-                        aoSelecionar: {}
-                    )
-                    .task {
-                        await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
-                    }
-                    .onAppear {
-                        if spot.id == viewModel.eventos.last?.id {
-                            Task { await viewModel.carregarProximaPagina() }
+
+    private var listaDeEventos: some View {
+        LazyVStack(spacing: 16) {
+            ForEach(viewModel.eventos) { spot in
+                CardSimplesView(
+                    dados: CardSimplesDados(
+                        spot: spot,
+                        imagem: imagem(do: spot)
+                    ),
+                    modo: .visitante(
+                        estaSalvo: viewModel.estaSalvo(spot),
+                        estaProcessando: viewModel.estaAlterandoSalvo(spot),
+                        podeSalvar: viewModel.podeSalvar(spot),
+                        aoAlternar: {
+                            Task { await viewModel.alternarSalvo(do: spot) }
                         }
-                    }
+                    ),
+                    aoSelecionar: {}
+                )
+                .task {
+                    await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
- 
-                if viewModel.estaCarregando && !viewModel.eventos.isEmpty {
-                    ProgressView()
-                        .tint(.white)
-                        .padding(.vertical, 12)
+                .onAppear {
+                    if spot.id == viewModel.eventos.last?.id {
+                        Task { await viewModel.carregarProximaPagina() }
+                    }
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
-        }
-        .refreshable {
-            await viewModel.recarregar()
+
+            if viewModel.estaCarregando && !viewModel.eventos.isEmpty {
+                ProgressView()
+                    .tint(.white)
+                    .padding(.vertical, 12)
+            }
         }
     }
 
@@ -185,9 +174,12 @@ struct TodosEventosView: View {
         return .arquivo(foto.arquivoURL)
     }
 }
- 
+
 #Preview {
+    let sessao = SessaoUsuario()
     NavigationStack {
-        TodosEventosView(sessao: SessaoUsuario())
+        TodosEventosView(sessao: sessao)
     }
+    .environment(sessao)
+    .preferredColorScheme(.dark)
 }

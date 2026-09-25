@@ -209,6 +209,8 @@ struct SpotsView: View {
 }
 
 #Preview {
-    SpotsView(sessao: SessaoUsuario())
+    let sessao = SessaoUsuario()
+    SpotsView(sessao: sessao)
+        .environment(sessao)
         .preferredColorScheme(.dark)
 }

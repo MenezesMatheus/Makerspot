@@ -6,175 +6,164 @@
 //
 
 import SwiftUI
- 
+
 struct TodosEspacosView: View {
-    @Environment(\.dismiss) private var dismiss
- 
     @State private var viewModel: TodosEspacosViewModel
-    @State private var mostrarErro = false
-    @State private var mostrarCriarEspaco = false
- 
+
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: TodosEspacosViewModel(sessao: sessao))
     }
- 
+
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.06, green: 0.15, blue: 0.4),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
- 
-            VStack(alignment: .leading, spacing: 24) {
-                barraSuperior
- 
-                cabecalho
- 
-                conteudo
+        ZStack(alignment: .top) {
+            fundo
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    Text("Do it yourself colaborativamente")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    conteudo
+                }
+                .padding(.bottom, 32)
             }
-            .padding(.top, 8)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .refreshable {
+                await viewModel.recarregar()
+            }
+
+            if viewModel.estaCarregando, viewModel.espacos.isEmpty {
+                ProgressView("Carregando espaços…")
+                    .padding(.top, 96)
+            }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Espaços")
+        .toolbarTitleDisplayMode(.inlineLarge)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Adicionar espaço", systemImage: "plus") {
+                    viewModel.iniciarCadastro()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .controlSize(.extraLarge)
+                .tint(.accentColor)
+                .accessibilityLabel("Adicionar espaço")
+            }
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { viewModel.cadastro != nil },
+            set: { if !$0 { viewModel.encerrarCadastro() } }
+        )) {
+            if let cadastro = viewModel.cadastro {
+                CadastrarSpotView(viewModel: cadastro)
+            }
+        }
         .task {
             guard viewModel.espacos.isEmpty else { return }
             await viewModel.carregarPrimeiraPagina()
         }
-        .onChange(of: viewModel.mensagemDeErro) { _, novoValor in
-            mostrarErro = novoValor != nil
-        }
-        .alert("Não foi possível carregar", isPresented: $mostrarErro) {
+        .alert(
+            "Não foi possível carregar",
+            isPresented: Binding(
+                get: { viewModel.mensagemDeErro != nil },
+                set: { if !$0 { viewModel.limparErro() } }
+            )
+        ) {
             Button("Tentar novamente") {
                 Task { await viewModel.recarregar() }
             }
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) {
+                viewModel.limparErro()
+            }
         } message: {
             Text(viewModel.mensagemDeErro ?? "Tente novamente em instantes.")
         }
-        .sheet(isPresented: $mostrarCriarEspaco) {
-            // apresentar a tela de cadastro de espaço quando disponivel
-        }
     }
- 
-    // cabecalho
- 
-    private var barraSuperior: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(white: 0.12))
-                    .clipShape(Circle())
-            }
- 
-            Spacer()
- 
-            Button(action: { mostrarCriarEspaco = true }) {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(red: 0.85, green: 0.1, blue: 0.47))
-                    .clipShape(Circle())
-            }
-        }
-        .padding(.horizontal)
+
+    private var fundo: some View {
+        LinearGradient(
+            colors: [
+                Color("CorEspaco").opacity(0.4),
+                .black,
+                .black.opacity(0.6),
+                .black.opacity(0.6),
+                .black.opacity(0.7),
+                .black.opacity(0.8)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
- 
-    private var cabecalho: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Espaços")
-                .font(.largeTitle.bold())
-                .foregroundColor(.white)
- 
-            Text("Do it yourself colaborativamente")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-        }
-        .padding(.horizontal)
-    }
- 
-    // conteudo da tela
- 
+
     @ViewBuilder
     private var conteudo: some View {
         if viewModel.espacos.isEmpty && viewModel.estaCarregando {
-            Spacer()
-            ProgressView()
-                .tint(.white)
-                .frame(maxWidth: .infinity)
-            Spacer()
+            Color.clear.frame(height: 120)
         } else if viewModel.espacos.isEmpty {
-            Spacer()
             estadoVazio
-            Spacer()
         } else {
             listaDeEspacos
         }
     }
- 
+
     private var estadoVazio: some View {
         VStack(spacing: 12) {
             Image(systemName: "mappin.slash")
                 .font(.system(size: 36))
-                .foregroundColor(.gray)
+                .foregroundStyle(.secondary)
+
             Text("Nenhum espaço encontrado")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
+
             Text("Novos espaços aparecem aqui assim que forem publicados.")
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 48)
     }
- 
+
     private var listaDeEspacos: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                ForEach(viewModel.espacos) { spot in
-                    CardSimplesView(
-                        dados: CardSimplesDados(
-                            spot: spot,
-                            imagem: imagem(do: spot)
-                        ),
-                        modo: .visitante(
-                            estaSalvo: viewModel.estaSalvo(spot),
-                            estaProcessando: viewModel.estaAlterandoSalvo(spot),
-                            podeSalvar: viewModel.podeSalvar(spot),
-                            aoAlternar: {
-                                Task { await viewModel.alternarSalvo(do: spot) }
-                            }
-                        ),
-                        aoSelecionar: {}
-                    )
-                    .task {
-                        await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
-                    }
-                    .onAppear {
-                        if spot.id == viewModel.espacos.last?.id {
-                            Task { await viewModel.carregarProximaPagina() }
+        LazyVStack(spacing: 16) {
+            ForEach(viewModel.espacos) { spot in
+                CardSimplesView(
+                    dados: CardSimplesDados(
+                        spot: spot,
+                        imagem: imagem(do: spot)
+                    ),
+                    modo: .visitante(
+                        estaSalvo: viewModel.estaSalvo(spot),
+                        estaProcessando: viewModel.estaAlterandoSalvo(spot),
+                        podeSalvar: viewModel.podeSalvar(spot),
+                        aoAlternar: {
+                            Task { await viewModel.alternarSalvo(do: spot) }
                         }
-                    }
+                    ),
+                    aoSelecionar: {}
+                )
+                .task {
+                    await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
- 
-                if viewModel.estaCarregando && !viewModel.espacos.isEmpty {
-                    ProgressView()
-                        .tint(.white)
-                        .padding(.vertical, 12)
+                .onAppear {
+                    if spot.id == viewModel.espacos.last?.id {
+                        Task { await viewModel.carregarProximaPagina() }
+                    }
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
-        }
-        .refreshable {
-            await viewModel.recarregar()
+
+            if viewModel.estaCarregando && !viewModel.espacos.isEmpty {
+                ProgressView()
+                    .tint(.white)
+                    .padding(.vertical, 12)
+            }
         }
     }
 
@@ -185,9 +174,12 @@ struct TodosEspacosView: View {
         return .arquivo(foto.arquivoURL)
     }
 }
- 
+
 #Preview {
+    let sessao = SessaoUsuario()
     NavigationStack {
-        TodosEspacosView(sessao: SessaoUsuario())
+        TodosEspacosView(sessao: sessao)
     }
+    .environment(sessao)
+    .preferredColorScheme(.dark)
 }
