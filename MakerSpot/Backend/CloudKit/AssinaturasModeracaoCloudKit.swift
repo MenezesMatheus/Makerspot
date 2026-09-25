@@ -26,7 +26,7 @@ final class AssinaturasModeracaoCloudKit {
             subscriptionID: IdentificadorCloudKit.assinaturaModeracao(usuarioID),
             options: [.firesOnRecordCreation]
         )
-        
+
         let informacoes = CKSubscription.NotificationInfo()
         informacoes.title = "MakerSpot"
         informacoes.alertBody = "Um conteúdo seu foi removido pela moderação. Toque para ver o motivo."

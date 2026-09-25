@@ -11,16 +11,11 @@ struct TodosEventosView: View {
     @Environment(\.dismiss) private var dismiss
  
     @State private var viewModel: TodosEventosViewModel
-    @State private var idsSalvos: Set<UUID> = []
-    @State private var idsAlternandoSalvo: Set<UUID> = []
     @State private var mostrarErro = false
     @State private var mostrarCriarEspaco = false
  
-    private let salvosCRUD: SalvosCRUD
- 
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: TodosEventosViewModel(sessao: sessao))
-        self.salvosCRUD = SalvosCRUD(sessao: sessao)
     }
  
     var body: some View {
@@ -48,7 +43,6 @@ struct TodosEventosView: View {
         .task {
             guard viewModel.eventos.isEmpty else { return }
             await viewModel.carregarPrimeiraPagina()
-            await sincronizarSalvos()
         }
         .onChange(of: viewModel.mensagemDeErro) { _, novoValor in
             mostrarErro = novoValor != nil
@@ -145,15 +139,24 @@ struct TodosEventosView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 ForEach(viewModel.eventos) { spot in
-                    CardSpotView(
-                        tipo: spot.tipo,
-                        titulo: spot.nome,
-                        nomeImagem: nomeImagem(para: spot),
-                        textoInfo: textoInfo(para: spot),
-                        localCidade: localCidade(para: spot),
-                        estaSalvo: idsSalvos.contains(spot.id),
-                        aoAlternarSalvo: { alternarSalvo(spot: spot) }
+                    CardSimplesView(
+                        dados: CardSimplesDados(
+                            spot: spot,
+                            imagem: imagem(do: spot)
+                        ),
+                        modo: .visitante(
+                            estaSalvo: viewModel.estaSalvo(spot),
+                            estaProcessando: viewModel.estaAlterandoSalvo(spot),
+                            podeSalvar: viewModel.podeSalvar(spot),
+                            aoAlternar: {
+                                Task { await viewModel.alternarSalvo(do: spot) }
+                            }
+                        ),
+                        aoSelecionar: {}
                     )
+                    .task {
+                        await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
+                    }
                     .onAppear {
                         if spot.id == viewModel.eventos.last?.id {
                             Task { await viewModel.carregarProximaPagina() }
@@ -172,71 +175,14 @@ struct TodosEventosView: View {
         }
         .refreshable {
             await viewModel.recarregar()
-            await sincronizarSalvos()
         }
     }
- 
-    // salvos
- 
-    private func sincronizarSalvos() async {
-        do {
-            let salvos = try await salvosCRUD.listar()
-            idsSalvos = Set(salvos.map(\.spotID))
-        } catch {
-            // mantem o estado atual dos salvos em caso de falha silenciosa
+
+    private func imagem(do spot: Spot) -> ImagemCardSimples {
+        guard let foto = viewModel.fotosSpots.fotoPrincipal(do: spot) else {
+            return .placeholder
         }
-    }
- 
-    private func alternarSalvo(spot: Spot) {
-        guard !idsAlternandoSalvo.contains(spot.id) else { return }
-        let estavaSalvo = idsSalvos.contains(spot.id)
- 
-        idsAlternandoSalvo.insert(spot.id)
-        if estavaSalvo {
-            idsSalvos.remove(spot.id)
-        } else {
-            idsSalvos.insert(spot.id)
-        }
- 
-        Task {
-            defer { idsAlternandoSalvo.remove(spot.id) }
-            do {
-                if estavaSalvo {
-                    try await salvosCRUD.dessalvar(spotID: spot.id)
-                } else {
-                    _ = try await salvosCRUD.salvar(spotID: spot.id)
-                }
-            } catch {
-                // reverte a alteração otimista em caso de falha
-                if estavaSalvo {
-                    idsSalvos.insert(spot.id)
-                } else {
-                    idsSalvos.remove(spot.id)
-                }
-            }
-        }
-    }
- 
-    // formatacao do card
- 
-    private func localCidade(para spot: Spot) -> String {
-        "\(spot.localizacao.endereco.cidade), \(spot.localizacao.endereco.estado)"
-    }
- 
-    private func textoInfo(para spot: Spot) -> String {
-        switch spot.detalhes {
-        case .espaco:
-            // ajustar para o nome real da propriedade de horário na entidade de espaco
-            return spot.telefone
-        case .evento(let evento):
-            let formatador = DateFormatter()
-            formatador.dateFormat = "dd.MM HH'h'"
-            return formatador.string(from: evento.inicio)
-        }
-    }
- 
-    private func nomeImagem(para spot: Spot) -> String {
-        spot.tipo == .espaco ? "espaco_placeholder" : "evento_placeholder"
+        return .arquivo(foto.arquivoURL)
     }
 }
  

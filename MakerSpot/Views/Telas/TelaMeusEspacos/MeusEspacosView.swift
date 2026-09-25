@@ -152,17 +152,23 @@ struct MeusEspacosView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 ForEach(viewModel.espacos) { spot in
-                    CardMeuSpotView(
-                        tipo: spot.tipo,
-                        titulo: spot.nome,
-                        nomeImagem: nomeImagem(para: spot),
-                        textoInfo: textoInfo(para: spot),
-                        localCidade: localCidade(para: spot),
-                        estaAtivo: spot.estaAtivo,
-                        aoAlternarAtivo: { novoValor in
-                            Task { await viewModel.definirAtivo(novoValor, para: spot.id) }
-                        }
+                    CardSimplesView(
+                        dados: CardSimplesDados(
+                            spot: spot,
+                            imagem: imagem(do: spot)
+                        ),
+                        modo: .proprietario(
+                            estaAtivo: spot.estaAtivo,
+                            estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                            aoAlternar: { novoValor in
+                                Task { await viewModel.definirAtivo(novoValor, para: spot.id) }
+                            }
+                        ),
+                        aoSelecionar: {}
                     )
+                    .task {
+                        await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
+                    }
                     .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)
                     .disabled(viewModel.spotEmAlteracao == spot.id)
                     .swipeActions(edge: .trailing) {
@@ -183,26 +189,11 @@ struct MeusEspacosView: View {
         }
     }
  
-    // formatacao do card
- 
-    private func localCidade(para spot: Spot) -> String {
-        "\(spot.localizacao.endereco.cidade), \(spot.localizacao.endereco.estado)"
-    }
- 
-    private func textoInfo(para spot: Spot) -> String {
-        switch spot.detalhes {
-        case .espaco:
-            // ajustar para o nome real da propriedade de horário na entidade de espaco
-            return spot.telefone
-        case .evento(let evento):
-            let formatador = DateFormatter()
-            formatador.dateFormat = "dd.MM HH'h'"
-            return formatador.string(from: evento.inicio)
+    private func imagem(do spot: Spot) -> ImagemCardSimples {
+        guard let foto = viewModel.fotosSpots.fotoPrincipal(do: spot) else {
+            return .placeholder
         }
-    }
- 
-    private func nomeImagem(para spot: Spot) -> String {
-        spot.tipo == .espaco ? "espaco_placeholder" : "evento_placeholder"
+        return .arquivo(foto.arquivoURL)
     }
 }
  

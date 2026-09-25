@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct SpotsView: View {
+    @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: SpotsViewModel
 
     init(viewModel: SpotsViewModel) {
@@ -112,7 +113,7 @@ struct SpotsView: View {
         VStack(alignment: .leading, spacing: 18) {
             cabecalhoSecao(
                 titulo: "Eventos",
-                destino: TodosEventosView()
+                destino: TodosEventosView(sessao: sessao)
             )
 
             if !viewModel.eventosEmDestaque.isEmpty {
@@ -147,7 +148,7 @@ struct SpotsView: View {
         VStack(alignment: .leading, spacing: 18) {
             cabecalhoSecao(
                 titulo: "Espaços",
-                destino: TodosEspacosView()
+                destino: TodosEspacosView(sessao: sessao)
             )
 
             if !viewModel.espacosEmDestaque.isEmpty {
