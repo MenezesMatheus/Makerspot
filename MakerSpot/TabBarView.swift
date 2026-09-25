@@ -10,13 +10,17 @@ import SwiftUI
 struct TabBarView: View {
     @State private var spotsViewModel: SpotsViewModel
     @State private var perfilViewModel: PerfilViewModel
+    @State private var buscaViewModel: BuscaViewModel 
 
     init(sessao: SessaoUsuario) {
         _spotsViewModel = State(initialValue: SpotsViewModel(sessao: sessao))
         _perfilViewModel = State(initialValue: PerfilViewModel(sessao: sessao))
+        _buscaViewModel = State(initialValue: BuscaViewModel(sessao: sessao))
     }
 
     var body: some View {
+        
+        
         TabView {
             Tab("Spots", image: "SFspoticone") {
                 SpotsView(viewModel: spotsViewModel)
@@ -31,7 +35,7 @@ struct TabBarView: View {
             }
 
             Tab(role: .search) {
-                BuscaView()
+                BuscaView(viewModel: buscaViewModel)
             }
         }
     }

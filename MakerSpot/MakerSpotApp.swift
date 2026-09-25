@@ -25,11 +25,20 @@ private struct FluxoPrincipalView: View {
     @State private var sessao = SessaoUsuario()
     @State private var etapa: Etapa
     @State private var roteador = RoteadorNotificacoes.compartilhado
-    @AppStorage("shouldShowOnBoarding") private var shouldShowOnBoarding: Bool = true
+    @AppStorage("shouldShowOnBoarding")
+    private var shouldShowOnBoarding = true
     private let coordenadorNotificacoes = CoordenadorNotificacoes()
 
     init() {
-        _etapa = State(initialValue: UserDefaults.standard.bool(forKey: "shouldShowOnBoarding") == false ? .restaurando : .onboarding)
+        let deveMostrarOnboarding =
+            UserDefaults.standard.object(forKey: "shouldShowOnBoarding") == nil ||
+            UserDefaults.standard.bool(forKey: "shouldShowOnBoarding")
+
+        _etapa = State(
+            initialValue: deveMostrarOnboarding
+                ? .onboarding
+                : .restaurando
+        )
     }
 
     var body: some View {
@@ -38,7 +47,7 @@ private struct FluxoPrincipalView: View {
         Group {
             switch etapa {
             case .onboarding:
-                tabview {
+                ONboardingview {
                     shouldShowOnBoarding = false
                     etapa = .restaurando
                 }

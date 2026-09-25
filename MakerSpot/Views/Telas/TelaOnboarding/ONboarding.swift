@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct tabview: View {
+struct ONboardingview: View {
     @State private var paginaAtual = 0
     private let totaldepaginas = 2
     var aoConcluir: () -> Void
@@ -56,6 +56,6 @@ struct tabview: View {
 }
 
 #Preview {
-    tabview(aoConcluir: {})
+    ONboardingview(aoConcluir: {})
 }
 
