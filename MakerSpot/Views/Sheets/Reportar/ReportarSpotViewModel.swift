@@ -10,7 +10,7 @@ import Observation
 
 @MainActor
 @Observable
-final class ReportarSpotViewModel {
+final class ReportarSpotViewModel: Identifiable {
     var texto = ""
 
     private(set) var denunciaEnviada: Denuncia?
@@ -20,10 +20,22 @@ final class ReportarSpotViewModel {
     let limiteCaracteres = DenunciaCRUD.limiteCaracteres
     let spotID: UUID
 
+    var id: UUID { spotID }
+
     private let crud: DenunciaCRUD
 
     var quantidadeCaracteresRestantes: Int {
         max(0, limiteCaracteres - texto.count)
+    }
+
+    var podeEnviar: Bool {
+        let motivo = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !motivo.isEmpty && motivo.count <= limiteCaracteres
+            && !estaEnviando && denunciaEnviada == nil
+    }
+
+    func limparErro() {
+        mensagemDeErro = nil
     }
 
     init(spotID: UUID, crud: DenunciaCRUD) {
@@ -40,7 +52,7 @@ final class ReportarSpotViewModel {
 
     @discardableResult
     func enviar() async -> Bool {
-        guard !estaEnviando, denunciaEnviada == nil else { return false }
+        guard podeEnviar else { return false }
         estaEnviando = true
         mensagemDeErro = nil
         defer { estaEnviando = false }
@@ -51,6 +63,8 @@ final class ReportarSpotViewModel {
                 texto: texto
             )
             return true
+        } catch ErroCloudKit.operacaoCancelada {
+            return false
         } catch is CancellationError {
             return false
         } catch {

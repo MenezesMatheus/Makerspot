@@ -27,14 +27,17 @@ final class SalvosCRUD {
     private let cliente: ClienteCloudKit
     private let assinaturas: AssinaturasCloudKit
     private let autorizacao: AutorizacaoCRUD
+    private let notificacoes: Notificacoes
 
     init(
         cliente: ClienteCloudKit = ClienteCloudKit(),
         sessao: SessaoUsuario,
-        assinaturas: AssinaturasCloudKit = AssinaturasCloudKit()
+        assinaturas: AssinaturasCloudKit = AssinaturasCloudKit(),
+        notificacoes: Notificacoes = Notificacoes()
     ) {
         self.cliente = cliente
         self.assinaturas = assinaturas
+        self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
     }
 
@@ -60,7 +63,7 @@ final class SalvosCRUD {
             let existente = try await cliente.buscar(identificador, tipo: .spotSalvo)
             let salvo = try ConversorRegistroCloudKit.spotSalvo(de: existente)
             try await assinaturas.garantirAssinatura(para: spot.id)
-            return salvo
+            return await finalizarSalvamento(salvo, spot: spot)
         } catch ErroCloudKit.registroNaoEncontrado {
         }
 
@@ -74,9 +77,10 @@ final class SalvosCRUD {
         try await assinaturas.garantirAssinatura(para: spot.id)
         do {
             let registro = try ConversorRegistroCloudKit.registro(de: salvo)
-            return try ConversorRegistroCloudKit.spotSalvo(
+            let registroSalvo = try ConversorRegistroCloudKit.spotSalvo(
                 de: try await cliente.salvar(registro)
             )
+            return await finalizarSalvamento(registroSalvo, spot: spot)
         } catch {
             let erroOriginal = error
             do {
@@ -84,7 +88,10 @@ final class SalvosCRUD {
                     identificador,
                     tipo: .spotSalvo
                 )
-                return try ConversorRegistroCloudKit.spotSalvo(de: existente)
+                let registroSalvo = try ConversorRegistroCloudKit.spotSalvo(
+                    de: existente
+                )
+                return await finalizarSalvamento(registroSalvo, spot: spot)
             } catch let erroVerificacao as ErroCloudKit {
                 if case .registroNaoEncontrado = erroVerificacao {
                     try? await assinaturas.removerAssinatura(do: spot.id)
@@ -108,6 +115,7 @@ final class SalvosCRUD {
         } catch ErroCloudKit.registroNaoEncontrado {
         }
         try await assinaturas.removerAssinatura(do: spotID)
+        notificacoes.cancelarLembretes(spotID: spotID, papel: .salvo)
     }
 
     func estaSalvo(spotID: UUID) async throws -> Bool {
@@ -160,10 +168,15 @@ final class SalvosCRUD {
             return (spot.id, spot)
         }
         let spots = Dictionary(uniqueKeysWithValues: paresValidos)
-        return salvos.compactMap { salvo in
+        let itens: [ItemSpotSalvo] = salvos.compactMap { salvo in
             guard let spot = spots[salvo.spotID] else { return nil }
             return ItemSpotSalvo(registro: salvo, spot: spot)
         }
+        try? await notificacoes.sincronizarLembretes(
+            eventos: itens.map(\.spot),
+            papel: .salvo
+        )
+        return itens
     }
 
     func marcarComoVisualizado(spotID: UUID) async throws -> SpotSalvo {
@@ -222,14 +235,32 @@ final class SalvosCRUD {
                     tipo: .spot
                 )
             )
-            return spot.versao > salvo.ultimaVersaoConhecida
-                ? .atualizado(spot)
-                : .ignorada
+            guard spot.versao > salvo.ultimaVersaoConhecida else {
+                return .ignorada
+            }
+            try? await notificacoes.agendarLembretes(
+                para: spot,
+                papel: .salvo
+            )
+            return .atualizado(spot)
         } catch ErroCloudKit.registroNaoEncontrado {
             try? await cliente.excluir(identificadorSalvo, tipo: .spotSalvo)
             try? await assinaturas.removerAssinatura(do: spotID)
+            notificacoes.cancelarLembretes(spotID: spotID, papel: .salvo)
             return .removido(spotID)
         }
+    }
+
+    private func finalizarSalvamento(
+        _ salvo: SpotSalvo,
+        spot: Spot
+    ) async -> SpotSalvo {
+        _ = try? await notificacoes.prepararSistema()
+        try? await notificacoes.agendarLembretes(
+            para: spot,
+            papel: .salvo
+        )
+        return salvo
     }
 
     private func listarRegistros(do usuario: Usuario) async throws -> [SpotSalvo] {

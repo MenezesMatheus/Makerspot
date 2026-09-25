@@ -21,7 +21,6 @@ struct ResultadoEnvioFotoSpot: Equatable, Sendable {
 }
 
 final class FotoCRUD {
-    static let limiteFotosPorSpot = 10
     private static let limiteBytesOriginais = 30 * 1_024 * 1_024
     private static let limiteBytesPreparados = 10 * 1_024 * 1_024
     private static let limiteMaiorDimensaoOriginal = 20_000
@@ -70,11 +69,6 @@ final class FotoCRUD {
         guard Set(spot.fotoIDs).count == spot.fotoIDs.count else {
             throw ErroCRUD.respostaInconsistente
         }
-        guard spot.fotoIDs.count < Self.limiteFotosPorSpot else {
-            throw ErroCRUD.dadosInvalidos(
-                descricao: "Cada Spot pode ter no máximo \(Self.limiteFotosPorSpot) fotos."
-            )
-        }
 
         let foto = Foto(
             id: UUID(),
@@ -121,11 +115,16 @@ final class FotoCRUD {
         )
     }
 
+    func buscarFotoPrincipal(para spot: Spot) async throws -> FotoDisponivel? {
+        var apenasCapa = spot
+        apenasCapa.fotoIDs = Array(spot.fotoIDs.prefix(1))
+        return try await buscarFotos(para: apenasCapa).first
+    }
+
     func buscarFotos(para spot: Spot) async throws -> [FotoDisponivel] {
         _ = try await autorizacao.contextoAtual()
         guard !spot.fotoIDs.isEmpty else { return [] }
-        guard spot.fotoIDs.count <= Self.limiteFotosPorSpot,
-              Set(spot.fotoIDs).count == spot.fotoIDs.count else {
+        guard Set(spot.fotoIDs).count == spot.fotoIDs.count else {
             throw ErroCRUD.respostaInconsistente
         }
 

@@ -248,12 +248,21 @@ final class AssinaturasCloudKit {
         )
 
         let informacoes = CKSubscription.NotificationInfo(
-            alertBody: "Um Spot que você salvou foi atualizado ou removido.",
+            alertBody: "Um Spot que você salvou foi alterado, desativado ou removido.",
             title: "MakerSpot",
             soundName: "default",
             shouldBadge: true,
             shouldSendContentAvailable: true
         )
+        informacoes.desiredKeys = [
+            CampoCloudKit.id,
+            CampoCloudKit.Spot.tipo,
+            CampoCloudKit.Spot.nome,
+            CampoCloudKit.Spot.estaAtivo,
+            CampoCloudKit.Spot.inicioEvento,
+            CampoCloudKit.Spot.fusoHorarioID,
+            CampoCloudKit.Spot.versao
+        ]
         assinatura.notificationInfo = informacoes
         return assinatura
     }
