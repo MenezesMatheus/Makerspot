@@ -51,7 +51,9 @@ struct BuscaView: View {
            .navigationTitle("Buscar")
            .searchable(text: $viewModel.texto, prompt: "Eventos, Espaços e mais")
            .overlay {
-               if viewModel.resultados.isEmpty && !viewModel.estaCarregando {
+               if viewModel.resultados.isEmpty
+                   && !viewModel.estaCarregando
+                   && !viewModel.estaCompletandoBusca {
                    ContentUnavailableView.search(text: viewModel.texto)
                }
            }
@@ -62,6 +64,13 @@ struct BuscaView: View {
                if viewModel.spotsCarregados.isEmpty {
                    await viewModel.carregarPrimeiraPagina()
                }
+           }
+           .task(id: viewModel.texto) {
+               await viewModel.completarResultadosDaBusca()
+           }
+           .onAppear {
+               guard !viewModel.spotsCarregados.isEmpty else { return }
+               Task { await viewModel.sincronizarSalvos() }
            }
            .alert(
                "Ops",
@@ -119,4 +128,3 @@ struct BuscaView: View {
     BuscaView(viewModel: BuscaViewModel(sessao: SessaoUsuario()))
 }
  
-

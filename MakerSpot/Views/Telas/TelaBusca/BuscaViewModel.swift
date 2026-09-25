@@ -17,6 +17,7 @@ final class BuscaViewModel {
     private(set) var spotsCarregados: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
+    private(set) var estaCompletandoBusca = false
     private(set) var estaSincronizandoSalvos = false
     private(set) var spotsEmAlteracao: Set<UUID> = []
     private(set) var podeCarregarMais = true
@@ -95,6 +96,36 @@ final class BuscaViewModel {
 
     func recarregar() async {
         await carregarPrimeiraPagina()
+    }
+
+    func completarResultadosDaBusca() async {
+        guard !normalizar(texto).isEmpty else { return }
+
+        estaCompletandoBusca = true
+        defer { estaCompletandoBusca = false }
+
+        do {
+            try await Task.sleep(for: .milliseconds(300))
+        } catch {
+            return
+        }
+
+        while !Task.isCancelled, podeCarregarMais {
+            while estaCarregando, !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(50))
+                } catch {
+                    return
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+            await carregarProximaPagina()
+
+            if mensagemDeErro != nil {
+                return
+            }
+        }
     }
 
     func carregarProximaPagina() async {
@@ -193,7 +224,7 @@ final class BuscaViewModel {
         mensagemDeErro = nil
     }
 
-    private func sincronizarSalvos() async {
+    func sincronizarSalvos() async {
         guard !estaSincronizandoSalvos else { return }
         estaSincronizandoSalvos = true
         defer { estaSincronizandoSalvos = false }

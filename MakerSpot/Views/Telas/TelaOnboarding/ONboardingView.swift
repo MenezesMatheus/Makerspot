@@ -14,7 +14,7 @@ struct ONboardingview: View {
     
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             TabView(selection: $paginaAtual) {
                 Onboarding1(imagem: "ONBOARDING 1", texto1: "Bem-vindo \nao Makerspot", texto2: "Encontre espaços e \neventos para criar e \nconectar.")
                     .tag(0)
@@ -26,22 +26,15 @@ struct ONboardingview: View {
             
             HStack {
                 Spacer()
-                Spacer()
-                Spacer()
-                Spacer()
-                Spacer()
                 BotaoView(
                     nome: paginaAtual == totaldepaginas - 1 ? "Próximo" : "Continuar",
                     acao: continuar
                 )
-                Spacer()
-               
             }
-            
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
         }
-//        .fullScreenCover(isPresented: $shownext) {
-//            LoginView(sessao: SessaoUsuario())
-//        }
+        .background(Color.black.ignoresSafeArea())
     }
 
     private func continuar() {
@@ -58,4 +51,3 @@ struct ONboardingview: View {
 #Preview {
     ONboardingview(aoConcluir: {})
 }
-
