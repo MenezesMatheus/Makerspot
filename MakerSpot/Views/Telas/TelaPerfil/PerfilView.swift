@@ -9,6 +9,7 @@ import SwiftUI
 import PhotosUI
 
 struct PerfilView: View {
+    @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: PerfilViewModel
     @State private var itemSelecionado: PhotosPickerItem?
     @State private var mostrandoEdicaoPerfil = false
@@ -71,17 +72,17 @@ struct PerfilView: View {
                         }
                         .padding(.vertical, 16)
 
-        
+
                         secaoDoUsuario(
                             titulo: "Meus eventos",
                             spots: viewModel.eventos,
-                            destino: MeusEventosView()
+                            destino: MeusEventosView(sessao: sessao)
                         )
 
                         secaoDoUsuario(
                             titulo: "Meus espaços",
                             spots: viewModel.espacos,
-                            destino: MeusEspacosView()
+                            destino: MeusEspacosView(sessao: sessao)
                         )
                     }
                     .padding(.bottom, 32)
@@ -281,6 +282,8 @@ struct PerfilView: View {
 }
 
 #Preview {
-    PerfilView(sessao: SessaoUsuario())
+    let sessao = SessaoUsuario()
+    PerfilView(sessao: sessao)
+        .environment(sessao)
         .preferredColorScheme(.dark)
 }

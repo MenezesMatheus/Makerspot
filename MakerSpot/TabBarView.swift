@@ -38,6 +38,8 @@ struct TabBarView: View {
 }
 
 #Preview {
-    TabBarView(sessao: SessaoUsuario())
+    let sessao = SessaoUsuario()
+    TabBarView(sessao: sessao)
+        .environment(sessao)
         .preferredColorScheme(.dark)
 }
