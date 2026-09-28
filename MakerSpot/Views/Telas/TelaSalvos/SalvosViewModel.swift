@@ -21,6 +21,14 @@ final class SalvosViewModel {
     private(set) var mensagemDeErro: String?
     private(set) var estadoNotificacoes: EstadoPermissaoNotificacoes = .naoSolicitada
 
+    var espacosSalvos: [ItemSpotSalvo] {
+        itens.filter { $0.spot.tipo == .espaco }
+    }
+
+    var eventosSalvos: [ItemSpotSalvo] {
+        itens.filter { $0.spot.tipo == .evento }
+    }
+
     private let crud: SalvosCRUD
     private let notificacoes: Notificacoes
 

@@ -6,53 +6,70 @@
 import SwiftUI
 
 struct SalvosView: View {
-        
+    @Environment(SessaoUsuario.self) private var sessao
+    @Bindable private var viewModel: SalvosViewModel
     @State private var categoriaSelecionada: CategoriaSalvos = .espacos
-    
-    
-    @State private var espacosSalvos: [CardSimplesDados] = [
-       
-    ]
-    
-    // Deixe [] para testar a tela vazia
-    @State private var eventosSalvos: [CardSimplesDados] = [
-        CardSimplesDados(
-            tipo: .evento,
-            titulo: "Mobile-se",
-            imagem: .asset("mobilese"),
-            textoInfo: "23.09 10h",
-            localCidade: "Recife, PE"
-        ),
-        CardSimplesDados(
-            tipo: .evento,
-            titulo: "Mobile-se",
-            imagem: .asset("mobilese"),
-            textoInfo: "23.09 10h",
-            localCidade: "Recife, PE"
-        ),
-        CardSimplesDados(
-            tipo: .evento,
-            titulo: "Mobile-se",
-            imagem: .asset("mobilese"),
-            textoInfo: "23.09 10h",
-            localCidade: "Recife, PE"
-        )
-    ]
-    
+    @State private var explorarEspacos = false
+    @State private var explorarEventos = false
+
+    init(viewModel: SalvosViewModel) {
+        self.viewModel = viewModel
+    }
     
     // MARK: - Body
     
     var body: some View {
-        VStack(spacing: 0) {
-            
-            cabecalho
-            
-            seletor
-            
-            conteudo
+        NavigationStack {
+            VStack(spacing: 0) {
+                cabecalho
+                seletor
+                conteudo
+            }
+            .background { fundo }
+            .foregroundStyle(.white)
+            .navigationTitle("Salvos")
+            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $explorarEspacos) {
+                TodosEspacosView(sessao: sessao)
+            }
+            .navigationDestination(isPresented: $explorarEventos) {
+                TodosEventosView(sessao: sessao)
+            }
+            .task {
+                await viewModel.carregar()
+            }
+            .alert(
+                "Não foi possível carregar os salvos",
+                isPresented: Binding(
+                    get: { viewModel.mensagemDeErro != nil },
+                    set: { if !$0 { viewModel.limparErro() } }
+                )
+            ) {
+                Button("Tentar novamente") {
+                    Task { await viewModel.carregar() }
+                }
+                Button("OK", role: .cancel) {
+                    viewModel.limparErro()
+                }
+            } message: {
+                Text(viewModel.mensagemDeErro ?? "Tente novamente em instantes.")
+            }
         }
-        .background(Color.black.ignoresSafeArea())
-        .foregroundStyle(.white)
+    }
+
+    private var fundo: some View {
+        LinearGradient(
+            colors: [.accent.opacity(0.4),
+                     .black,
+                     .black.opacity(0.6),
+                     .black.opacity(0.6),
+                     .black.opacity(0.7),
+                     .black.opacity(0.8)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
     
     
@@ -60,18 +77,12 @@ struct SalvosView: View {
     
     private var cabecalho: some View {
         VStack(alignment: .leading, spacing: 4) {
-            
-            Text("Salvos")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            
             Text("Tudo o que você quer acompanhar")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.horizontal, 16)
     }
     
     
@@ -89,7 +100,7 @@ struct SalvosView: View {
                 .tag(CategoriaSalvos.eventos)
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
         .padding(.top, 22)
     }
     
@@ -101,17 +112,17 @@ struct SalvosView: View {
         switch categoriaSelecionada {
             
         case .espacos:
-            if espacosSalvos.isEmpty {
+            if viewModel.espacosSalvos.isEmpty {
                 estadoVazioEspacos
             } else {
-                listaSalvos(espacosSalvos)
+                listaSalvos(viewModel.espacosSalvos)
             }
             
         case .eventos:
-            if eventosSalvos.isEmpty {
+            if viewModel.eventosSalvos.isEmpty {
                 estadoVazioEventos
             } else {
-                listaSalvos(eventosSalvos)
+                listaSalvos(viewModel.eventosSalvos)
             }
         }
     }
@@ -120,19 +131,22 @@ struct SalvosView: View {
     // MARK: - Lista
     
     private func listaSalvos(
-        _ itens: [CardSimplesDados]
+        _ itens: [ItemSpotSalvo]
     ) -> some View {
         
         ScrollView {
             LazyVStack(spacing: 16) {
                 
-                ForEach(itens) { item in
+                ForEach(itens, id: \.spot.id) { item in
                     
                     CardSimplesView(
-                        dados: item,
+                        dados: CardSimplesDados(
+                            spot: item.spot,
+                            imagem: imagem(do: item.spot)
+                        ),
                         modo: .visitante(
                             estaSalvo: true,
-                            estaProcessando: false,
+                            estaProcessando: viewModel.spotEmAlteracao != nil,
                             podeSalvar: true,
                             aoAlternar: {
                                 removerDosSalvos(item)
@@ -142,9 +156,12 @@ struct SalvosView: View {
                             
                         }
                     )
+                    .task(id: item.spot.fotoIDs) {
+                        await viewModel.fotosSpots.carregarFotoPrincipal(do: item.spot)
+                    }
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 16)
             .padding(.top, 28)
             .padding(.bottom, 120)
         }
@@ -163,7 +180,7 @@ struct SalvosView: View {
                 "acompanhar suas novidades",
             tituloBotao: "Explorar Espaços"
         ) {
-            // Navegar para Spots
+            explorarEspacos = true
         }
     }
     
@@ -179,7 +196,7 @@ struct SalvosView: View {
                 "acompanhar suas novidades",
             tituloBotao: "Explorar Eventos"
         ) {
-            // Navegar para Spots
+            explorarEventos = true
         }
     }
     
@@ -252,26 +269,17 @@ struct SalvosView: View {
     
     // MARK: - Remover dos salvos
     
-    private func removerDosSalvos(
-        _ item: CardSimplesDados
-    ) {
-        
-        switch item.tipo {
-            
-        case .espaco:
-            withAnimation {
-                espacosSalvos.removeAll {
-                    $0.id == item.id
-                }
-            }
-            
-        case .evento:
-            withAnimation {
-                eventosSalvos.removeAll {
-                    $0.id == item.id
-                }
-            }
+    private func removerDosSalvos(_ item: ItemSpotSalvo) {
+        Task {
+            await viewModel.dessalvar(spotID: item.spot.id)
         }
+    }
+
+    private func imagem(do spot: Spot) -> ImagemCardSimples {
+        guard let foto = viewModel.fotosSpots.fotoPrincipal(do: spot) else {
+            return .placeholder
+        }
+        return .arquivo(foto.arquivoURL)
     }
 }
 
@@ -287,8 +295,7 @@ private enum CategoriaSalvos {
 // MARK: - Preview
 
 #Preview {
-    NavigationStack {
-        SalvosView()
-    }
-    .environment(SessaoUsuario())
+    let sessao = SessaoUsuario()
+    SalvosView(viewModel: SalvosViewModel(sessao: sessao))
+        .environment(sessao)
 }
