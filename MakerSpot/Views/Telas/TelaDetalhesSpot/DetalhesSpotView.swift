@@ -42,7 +42,7 @@ struct DetalhesSpotView: View {
         .toolbar { barraDeAcoes }
         .sheet(item: $viewModelDenuncia) { denuncia in
             SheetReportarView(viewModel: denuncia)
-                .presentationDetents([.height(340)])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .navigationDestination(isPresented: $mostrarEditor) {
