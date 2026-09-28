@@ -34,16 +34,11 @@ struct SpotsView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Adicionar Spot", systemImage: "plus") {
+                    BotaoAdicionarToolbar(titulo: "Adicionar Spot") {
                         viewModel.iniciarCadastro()
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.extraLarge)
-                    .tint(.accentColor)
-                    .accessibilityLabel("Adicionar Spot")
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
             .navigationDestination(isPresented: Binding(
                 get: { viewModel.cadastro != nil },
@@ -54,7 +49,7 @@ struct SpotsView: View {
                 }
             }
             .task {
-                guard viewModel.spots.isEmpty else { return }
+                guard !viewModel.carregouPrimeiraPagina else { return }
                 await viewModel.carregarPrimeiraPagina()
             }
             .alert(
@@ -130,7 +125,7 @@ struct SpotsView: View {
                                     Task { await viewModel.alternarSalvo(do: evento) }
                                 }
                             )
-                            .task {
+                            .task(id: evento.fotoIDs) {
                                 await viewModel.fotosSpots.carregarFotoPrincipal(do: evento)
                             }
                         }
@@ -169,7 +164,7 @@ struct SpotsView: View {
                             ),
                             aoSelecionar: {}
                         )
-                        .task {
+                        .task(id: espaco.fotoIDs) {
                             await viewModel.fotosSpots.carregarFotoPrincipal(do: espaco)
                         }
                     }

@@ -338,13 +338,12 @@ final class EditarSpotViewModel {
         for item in itens {
             do {
                 try Task.checkCancellation()
-                guard let importada = try await item.loadTransferable(
-                    type: FotoImportadaCadastro.self
-                ) else {
+                guard let dados = try await item.loadTransferable(type: Data.self) else {
                     throw ErroCRUD.dadosInvalidos(
                         descricao: "Não foi possível ler a imagem selecionada."
                     )
                 }
+                let importada = try FotoImportadaCadastro.importar(dados)
                 if Task.isCancelled {
                     apagarArquivos(da: importada.foto)
                     return

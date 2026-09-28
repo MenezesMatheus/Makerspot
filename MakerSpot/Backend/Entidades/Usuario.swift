@@ -17,4 +17,10 @@ struct Usuario: Identifiable, Codable, Equatable, Sendable {
     var telefonePadrao: String?
     let criadoEm: Date
     var atualizadoEm: Date
+
+    // O cadastro inicial mantém as datas iguais; salvar o perfil atualiza atualizadoEm.
+    // Use os dados persistidos, pois a Apple não reenvia o nome em todo login.
+    var precisaCompletarPerfil: Bool {
+        atualizadoEm <= criadoEm
+    }
 }

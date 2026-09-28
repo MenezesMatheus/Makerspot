@@ -7,6 +7,15 @@
 
 import Foundation
 
+struct ItemSpotSalvo: Equatable, Sendable {
+    let registro: SpotSalvo
+    let spot: Spot
+
+    var foiAtualizado: Bool {
+        spot.versao > registro.ultimaVersaoConhecida
+    }
+}
+
 struct SpotSalvo: Identifiable, Codable, Equatable, Sendable {
     let usuarioID: UUID
     let spotID: UUID

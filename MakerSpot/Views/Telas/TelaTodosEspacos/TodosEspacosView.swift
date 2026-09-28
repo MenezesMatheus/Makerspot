@@ -43,16 +43,11 @@ struct TodosEspacosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar espaço", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar espaço") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar espaço")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },
@@ -63,7 +58,7 @@ struct TodosEspacosView: View {
             }
         }
         .task {
-            guard viewModel.espacos.isEmpty else { return }
+            guard !viewModel.carregouPrimeiraPagina else { return }
             await viewModel.carregarPrimeiraPagina()
         }
         .alert(
@@ -149,7 +144,7 @@ struct TodosEspacosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
                 .onAppear {

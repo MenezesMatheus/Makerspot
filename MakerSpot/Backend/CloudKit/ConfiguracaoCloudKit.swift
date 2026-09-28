@@ -131,8 +131,8 @@ enum VersaoEsquemaCloudKit {
 }
 
 enum IdentificadorContaCloudKit {
-    static func hash(de cloudKitUserRecordName: String) -> String {
-        SHA256.hash(data: Data(cloudKitUserRecordName.utf8))
+    static func hash(de identificador: String) -> String {
+        SHA256.hash(data: Data(identificador.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
     }

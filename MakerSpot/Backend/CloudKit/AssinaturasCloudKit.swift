@@ -28,28 +28,36 @@ final class AssinaturasCloudKit {
     }
 
     func removerAssinatura(do spotID: UUID) async throws {
-        let identificador = IdentificadorCloudKit.assinaturaSpot(spotID)
         let configuracao = configuracao
 
         try await enfileirar {
-            do {
-                _ = try await configuracao
-                    .banco(para: .spot)
-                    .deleteSubscription(withID: identificador)
-            } catch {
-                let erro = ErroCloudKit.converter(error)
-                guard case .registroNaoEncontrado = erro else {
-                    throw erro
+            let banco = configuracao.banco(para: .spot)
+            let identificadores = try await banco.allSubscriptions()
+                .map(\.subscriptionID)
+                .filter {
+                    IdentificadorCloudKit.spotDeQualquerAssinaturaMakerSpot($0)
+                        == spotID
+                }
+            for identificador in identificadores {
+                do {
+                    _ = try await banco.deleteSubscription(withID: identificador)
+                } catch {
+                    let erro = ErroCloudKit.converter(error)
+                    guard case .registroNaoEncontrado = erro else {
+                        throw erro
+                    }
                 }
             }
         }
     }
 
-    func reconciliarAssinaturas(com spotsSalvos: Set<UUID>) async throws {
+    func reconciliarAssinaturas(com spotsSalvos: Set<UUID>? = nil) async throws {
         let configuracao = configuracao
 
         try await enfileirar {
             let banco = configuracao.banco(para: .spot)
+            let spotsSalvos = spotsSalvos
+                ?? EstadoSpotsSalvosNotificacoes.compartilhado.identificadoresAtuais()
 
             let assinaturasExistentes = try await banco.allSubscriptions()
             let assinaturasDesejadas = spotsSalvos

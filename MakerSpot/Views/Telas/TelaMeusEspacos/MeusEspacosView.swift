@@ -57,16 +57,11 @@ struct MeusEspacosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar espaço", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar espaço") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar espaço")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },
@@ -77,7 +72,7 @@ struct MeusEspacosView: View {
             }
         }
         .task {
-            guard viewModel.espacos.isEmpty else { return }
+            guard !viewModel.carregouDados else { return }
             await viewModel.carregar()
         }
         .alert(
@@ -181,11 +176,9 @@ struct MeusEspacosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
-                .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)
-                .disabled(viewModel.spotEmAlteracao == spot.id)
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
                         idParaExcluir = spot.id

@@ -27,7 +27,7 @@ enum ErroCRUD: LocalizedError {
         case .contaCloudKitDivergente:
             return "A conta do iCloud atual não corresponde ao perfil autenticado."
         case .usuarioBanido:
-            return "Esta conta foi impedida de usar o MakerSpot."
+            return "Esta conta foi impedida de usar o MakerSpot. Se você acredita que isso é um erro, entre em contato pelo e-mail \(Notificacoes.emailSuporte)."
         case .somenteProprietario:
             return "Somente o proprietário pode alterar este Spot."
         case .spotProprioNaoPodeSerSalvo:
@@ -65,25 +65,51 @@ final class AutorizacaoCRUD {
             throw ErroCRUD.usuarioNaoAutenticado
         }
 
-        let identificadorCloudKit = try await cliente.verificarConta()
-        guard usuario.cloudKitUserRecordName == identificadorCloudKit.recordName else {
-            throw ErroCRUD.contaCloudKitDivergente
+        let nomeContaCloudKit: String
+        do {
+            nomeContaCloudKit = try await sessao.validarContaCloudKit { [self] in
+                let identificador = try await cliente.verificarConta()
+                guard usuario.cloudKitUserRecordName == identificador.recordName else {
+                    throw ErroCRUD.contaCloudKitDivergente
+                }
+                try await validarUsuarioAtivo(
+                    appleUserID: usuario.appleUserID,
+                    cloudKitUserRecordName: identificador.recordName
+                )
+                return identificador.recordName
+            }
+        } catch ErroCRUD.usuarioBanido {
+            if sessao.usuarioAtual?.id == usuario.id {
+                sessao.bloquear()
+            }
+            throw ErroCRUD.usuarioBanido
         }
-
-        try await validarUsuarioAtivo(
-            cloudKitUserRecordName: identificadorCloudKit.recordName
-        )
+        guard sessao.usuarioAtual?.id == usuario.id,
+              usuario.cloudKitUserRecordName == nomeContaCloudKit else {
+            throw ErroCRUD.usuarioNaoAutenticado
+        }
 
         return ContextoUsuarioCRUD(
             usuario: usuario,
-            identificadorCloudKit: identificadorCloudKit
+            identificadorCloudKit: CKRecord.ID(recordName: nomeContaCloudKit)
         )
     }
 
-    func validarUsuarioAtivo(cloudKitUserRecordName: String) async throws {
-        let contaHash = IdentificadorContaCloudKit.hash(
-            de: cloudKitUserRecordName
-        )
+    func validarUsuarioAtivo(
+        appleUserID: String,
+        cloudKitUserRecordName: String
+    ) async throws {
+        // Mantém os banimentos antigos por iCloud e também bloqueia novas
+        // contas criadas com o mesmo identificador do Sign in with Apple.
+        let hashICloud = IdentificadorContaCloudKit.hash(de: cloudKitUserRecordName)
+        let hashApple = IdentificadorContaCloudKit.hash(de: appleUserID)
+        try await verificarBanimento(contaHash: hashICloud)
+        if hashApple != hashICloud {
+            try await verificarBanimento(contaHash: hashApple)
+        }
+    }
+
+    private func verificarBanimento(contaHash: String) async throws {
         do {
             let registro = try await cliente.buscar(
                 IdentificadorCloudKit.banimentoUsuario(contaHash: contaHash),
@@ -104,10 +130,35 @@ final class AutorizacaoCRUD {
         spot: Spot,
         contexto: ContextoUsuarioCRUD
     ) throws {
-        guard spot.proprietarioID == contexto.usuario.id,
-              registro.creatorUserRecordID == contexto.identificadorCloudKit else {
+        guard ehProprietario(
+            do: registro,
+            spot: spot,
+            contexto: contexto
+        ) else {
             throw ErroCRUD.somenteProprietario
         }
+    }
+
+    /// O UUID persistido é a identidade funcional do proprietário no app.
+    /// `creatorUserRecordID` pode não corresponder ao identificador da conta.
+    func ehProprietario(
+        do registro: CKRecord,
+        spot: Spot,
+        contexto: ContextoUsuarioCRUD
+    ) -> Bool {
+        _ = registro
+        return spot.proprietarioID == contexto.usuario.id
+    }
+
+    /// Considera também os registros legados cuja autoria no app esteja inconsistente.
+    func foiCriadoPeloUsuarioAtual(
+        _ registro: CKRecord,
+        spot: Spot,
+        contexto: ContextoUsuarioCRUD
+    ) -> Bool {
+        if spot.proprietarioID == contexto.usuario.id { return true }
+        return registro.creatorUserRecordID?.recordName
+            == contexto.identificadorCloudKit.recordName
     }
 }
 

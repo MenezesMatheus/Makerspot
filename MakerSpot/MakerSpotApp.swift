@@ -61,7 +61,7 @@ private struct FluxoPrincipalView: View {
 
             case .login:
                 LoginView(sessao: sessao) {
-                    etapa = .criandoPerfil
+                    continuarAposAutenticacao()
                 }
 
             case .criandoPerfil:
@@ -78,29 +78,30 @@ private struct FluxoPrincipalView: View {
         .task(id: etapa) {
             guard etapa == .restaurando else { return }
             let login = LoginViewModel(sessao: sessao)
-            guard await login.restaurarSessao(),
-                  let usuario = sessao.usuarioAtual else {
+            guard await login.restaurarSessao() else {
                 etapa = .login
                 return
             }
 
-            etapa = usuario.atualizadoEm <= usuario.criadoEm
-                ? .criandoPerfil
-                : .principal
+            continuarAposAutenticacao()
         }
         .task(id: etapa) {
             guard etapa == .principal else { return }
             await coordenadorNotificacoes.configurar(sessao: sessao)
         }
         .onChange(of: sessao.estaAutenticado) { _, estaAutenticado in
-            if !estaAutenticado, etapa == .principal {
+            if !estaAutenticado, etapa == .principal || etapa == .criandoPerfil {
                 etapa = .login
             }
         }
         .onChange(of: scenePhase) { _, novaFase in
-            guard novaFase == .active, etapa == .principal else { return }
+            guard novaFase == .active,
+                  etapa == .principal || etapa == .criandoPerfil else { return }
             Task {
-                await coordenadorNotificacoes.configurar(sessao: sessao)
+                try? await UsuarioCRUD(sessao: sessao).verificarBanimentoDaSessaoAtual()
+                if etapa == .principal, sessao.estaAutenticado {
+                    await coordenadorNotificacoes.configurar(sessao: sessao)
+                }
             }
         }
         .alert(item: $roteador.alertaModeracao) { alerta in
@@ -114,6 +115,15 @@ private struct FluxoPrincipalView: View {
             )
         }
         .environment(sessao)
+    }
+
+    private func continuarAposAutenticacao() {
+        guard let usuario = sessao.usuarioAtual else {
+            etapa = .login
+            return
+        }
+
+        etapa = usuario.precisaCompletarPerfil ? .criandoPerfil : .principal
     }
 
     private func voltarAoLogin() {

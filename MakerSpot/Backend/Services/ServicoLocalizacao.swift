@@ -31,31 +31,40 @@ enum ErroLocalizacao: LocalizedError {
 
 final class ServicoLocalizacao {
     func buscarCoordenadas(para endereco: Endereco) async throws -> Coordenadas {
-        let texto = textoDeBusca(para: endereco)
-        guard !texto.isEmpty else {
+        let consultas = textosDeBusca(para: endereco)
+        guard !consultas.isEmpty else {
             throw ErroLocalizacao.enderecoVazio
         }
 
-        let requisicao = MKLocalSearch.Request(naturalLanguageQuery: texto)
-        requisicao.resultTypes = .address
+        for texto in consultas {
+            let requisicao = MKLocalSearch.Request(naturalLanguageQuery: texto)
+            requisicao.resultTypes = .address
 
-        do {
-            let resposta = try await MKLocalSearch(request: requisicao).start()
-            guard let coordenada = resposta.mapItems.first?.location.coordinate else {
-                throw ErroLocalizacao.enderecoNaoEncontrado
+            do {
+                let resposta = try await MKLocalSearch(request: requisicao).start()
+                guard let coordenada = resposta.mapItems.first?.location.coordinate else {
+                    continue
+                }
+                guard CLLocationCoordinate2DIsValid(coordenada) else {
+                    throw ErroLocalizacao.coordenadasInvalidas
+                }
+                return Coordenadas(
+                    latitude: coordenada.latitude,
+                    longitude: coordenada.longitude
+                )
+            } catch let erro as ErroLocalizacao {
+                throw erro
+            } catch {
+                if ehEnderecoNaoEncontrado(error) {
+                    continue
+                }
+                throw ErroLocalizacao.falhaNaBusca(
+                    descricao: "Não foi possível consultar o endereço agora. Tente novamente em instantes."
+                )
             }
-            guard CLLocationCoordinate2DIsValid(coordenada) else {
-                throw ErroLocalizacao.coordenadasInvalidas
-            }
-            return Coordenadas(
-                latitude: coordenada.latitude,
-                longitude: coordenada.longitude
-            )
-        } catch let erro as ErroLocalizacao {
-            throw erro
-        } catch {
-            throw ErroLocalizacao.falhaNaBusca(descricao: error.localizedDescription)
         }
+
+        throw ErroLocalizacao.enderecoNaoEncontrado
     }
 
     func abrirNoMapas(localizacao: Localizacao, nome: String) throws {
@@ -76,24 +85,58 @@ final class ServicoLocalizacao {
         item.openInMaps()
     }
 
-    private func textoDeBusca(para endereco: Endereco) -> String {
-        [
-            endereco.logradouro,
-            endereco.numero,
-            endereco.complemento,
-            endereco.bairro,
-            endereco.cidade,
-            endereco.estado,
-            endereco.codigoPostal,
-            endereco.codigoPais
+    private func textosDeBusca(para endereco: Endereco) -> [String] {
+        let pais = Locale(identifier: "pt_BR").localizedString(
+            forRegionCode: endereco.codigoPais
+        ) ?? endereco.codigoPais
+        let ruaENumero = [endereco.logradouro, endereco.numero]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+
+        let candidatos: [[String?]] = [
+            [
+                ruaENumero,
+                endereco.complemento,
+                endereco.bairro,
+                endereco.cidade,
+                endereco.estado,
+                endereco.codigoPostal,
+                pais
+            ],
+            [
+                ruaENumero,
+                endereco.bairro,
+                endereco.cidade,
+                endereco.estado,
+                pais
+            ],
+            [
+                ruaENumero,
+                endereco.codigoPostal,
+                endereco.cidade,
+                endereco.estado,
+                pais
+            ]
         ]
-        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-        .joined(separator: ", ")
+
+        var vistos: Set<String> = []
+        return candidatos.compactMap { partes in
+            let texto = partes
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: ", ")
+            guard !texto.isEmpty, vistos.insert(texto).inserted else { return nil }
+            return texto
+        }
+    }
+
+    private func ehEnderecoNaoEncontrado(_ erro: Error) -> Bool {
+        let nsErro = erro as NSError
+        return nsErro.domain == MKErrorDomain
+            && nsErro.code == MKError.Code.placemarkNotFound.rawValue
     }
 }
-
-///Users/salesmaju/Documents/Makerspot/MakerSpot/Backend/Services/ServicoLocalizacao.swift:108 This method can cause UI unresponsiveness if invoked on the main thread. Instead, consider waiting for the `-locationManagerDidChangeAuthorization:` callback and checking `authorizationStatus` first.
 
 @MainActor
 final class ServicoLocalizacaoUsuario: NSObject, CLLocationManagerDelegate {
@@ -107,8 +150,6 @@ final class ServicoLocalizacaoUsuario: NSObject, CLLocationManagerDelegate {
     }
 
     func obterCoordenadas() async -> Coordenadas? {
-        guard CLLocationManager.locationServicesEnabled() else { return nil }
-
         if let localizacao = gerenciador.location {
             return Self.coordenadas(de: localizacao)
         }

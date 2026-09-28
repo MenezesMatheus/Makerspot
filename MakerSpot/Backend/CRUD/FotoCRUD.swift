@@ -109,6 +109,7 @@ final class FotoCRUD {
             }
         }
 
+        sessao.alteracoesSpots.atualizar(spotAtualizado)
         return ResultadoEnvioFotoSpot(
             foto: foto,
             spotAtualizado: spotAtualizado
@@ -215,12 +216,18 @@ final class FotoCRUD {
             }
         }
         removerDoCache(fotoID: fotoID)
+        sessao.alteracoesSpots.atualizar(spot)
         return spot
     }
 
     func definirFotoPerfil(arquivoURL: URL) async throws -> FotoDisponivel {
         let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
-        defer { try? gerenciadorArquivos.removeItem(at: arquivoPreparado) }
+        var manterArquivoTemporario = false
+        defer {
+            if !manterArquivoTemporario {
+                try? gerenciadorArquivos.removeItem(at: arquivoPreparado)
+            }
+        }
 
         try await validarSegurancaDaFoto(arquivoPreparado)
 
@@ -272,7 +279,15 @@ final class FotoCRUD {
         }
 
         sessao.restaurar(usuarioAtualizado)
-        let arquivoEmCache = try copiarParaCache(arquivoPreparado, fotoID: foto.id)
+        // O perfil já foi gravado no CloudKit. Falha no cache local não pode
+        // transformar essa gravação bem-sucedida em erro de envio.
+        let arquivoEmCache: URL
+        if let copiado = try? copiarParaCache(arquivoPreparado, fotoID: foto.id) {
+            arquivoEmCache = copiado
+        } else {
+            manterArquivoTemporario = true
+            arquivoEmCache = arquivoPreparado
+        }
         if let fotoAnteriorID {
             await excluirFotoPerfilSeExistir(fotoAnteriorID)
             removerDoCache(fotoID: fotoAnteriorID)
@@ -384,13 +399,18 @@ final class FotoCRUD {
             )
         }
 
+        let maiorDimensaoOriginal = max(largura.intValue, altura.intValue)
+        let maiorDimensaoDaSaida = min(
+            Self.maiorDimensaoPreparada,
+            maiorDimensaoOriginal
+        )
         let opcoesMiniatura: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: Self.maiorDimensaoPreparada,
+            kCGImageSourceThumbnailMaxPixelSize: maiorDimensaoDaSaida,
             kCGImageSourceShouldCacheImmediately: true
         ]
-        guard let imagem = CGImageSourceCreateThumbnailAtIndex(
+        guard let miniatura = CGImageSourceCreateThumbnailAtIndex(
             fonte,
             0,
             opcoesMiniatura as CFDictionary
@@ -399,6 +419,7 @@ final class FotoCRUD {
                 descricao: "Não foi possível preparar a imagem selecionada."
             )
         }
+        let imagem = try imagemOpaca(miniatura)
 
         let diretorio = gerenciadorArquivos.temporaryDirectory
             .appendingPathComponent("UploadsMakerSpot", isDirectory: true)
@@ -443,6 +464,38 @@ final class FotoCRUD {
             )
         }
         return destino
+    }
+
+    /// O destino JPEG não suporta transparência. Redesenhar em um contexto
+    /// opaco evita preservar um canal alfa inútil, reduz o arquivo e elimina
+    /// o custo extra de memória apontado pelo ImageIO.
+    private func imagemOpaca(_ imagem: CGImage) throws -> CGImage {
+        guard let espacoDeCores = CGColorSpace(name: CGColorSpace.sRGB),
+              let contexto = CGContext(
+                data: nil,
+                width: imagem.width,
+                height: imagem.height,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: espacoDeCores,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Não foi possível preparar a imagem selecionada."
+            )
+        }
+
+        contexto.interpolationQuality = .high
+        contexto.draw(
+            imagem,
+            in: CGRect(x: 0, y: 0, width: imagem.width, height: imagem.height)
+        )
+        guard let resultado = contexto.makeImage() else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Não foi possível preparar a imagem selecionada."
+            )
+        }
+        return resultado
     }
 
     private func copiarParaCache(_ origem: URL, fotoID: UUID) throws -> URL {
@@ -492,9 +545,7 @@ final class FotoCRUD {
         switch triagem {
         case .bloqueadaPorConteudoSensivel:
             throw ErroCRUD.conteudoFotoNaoPermitido
-        case .analiseLocalIndisponivel:
-            throw ErroCRUD.moderacaoLocalIndisponivel
-        case .conteudoSensivelNaoDetectado:
+        case .analiseNaoHabilitadaNoSistema, .conteudoSensivelNaoDetectado:
             return
         }
     }

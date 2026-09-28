@@ -6,11 +6,14 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 @MainActor
 @Observable
 final class PerfilViewModel {
+    @ObservationIgnored private var alteracoes: AlteracoesSpots?
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     let fotosSpots: FotosSpotsViewModel
     private(set) var usuario: Usuario?
     private(set) var fotoPerfil: FotoDisponivel?
@@ -47,6 +50,11 @@ final class PerfilViewModel {
             fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD)
         )
         usuario = sessao.usuarioAtual
+        alteracoes = sessao.alteracoesSpots
+        observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
     }
 
     func criarEditorPerfil() -> EditarPerfilViewModel? {
@@ -62,8 +70,10 @@ final class PerfilViewModel {
         guard !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
-        fotosSpots.limpar()
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         do {
             usuario = try await usuarioCRUD.buscarUsuarioAtual()
@@ -113,6 +123,7 @@ final class PerfilViewModel {
 
     func definirAtivo(_ estaAtivo: Bool, para spot: Spot) async {
         guard spotEmAlteracao == nil,
+              spot.estaAtivo != estaAtivo,
               eventos.contains(where: { $0.id == spot.id })
                 || espacos.contains(where: { $0.id == spot.id }) else {
             return
@@ -122,6 +133,10 @@ final class PerfilViewModel {
         mensagemDeErro = nil
         defer { spotEmAlteracao = nil }
 
+        var otimista = spot
+        otimista.estaAtivo = estaAtivo
+        substituir(otimista)
+
         do {
             let atualizado = try await spotCRUD.definirAtivo(
                 estaAtivo,
@@ -129,10 +144,13 @@ final class PerfilViewModel {
             )
             substituir(atualizado)
         } catch ErroCloudKit.operacaoCancelada {
+            substituir(spot)
             return
         } catch is CancellationError {
+            substituir(spot)
             return
         } catch {
+            substituir(spot)
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -199,6 +217,20 @@ final class PerfilViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    private func aplicarAlteracoes() {
+        guard let alteracoes, let usuarioID = usuario?.id else { return }
+        let pendente = (eventos + espacos).first { $0.id == spotEmAlteracao }
+        eventos = alteracoes.consolidar(eventos) {
+            $0.tipo == .evento && $0.proprietarioID == usuarioID
+        }
+        espacos = alteracoes.consolidar(espacos) {
+            $0.tipo == .espaco && $0.proprietarioID == usuarioID
+        }
+        if let pendente, !alteracoes.excluidos.contains(pendente.id) {
+            substituir(pendente)
+        }
     }
 
     func aplicarAtualizacao(_ usuario: Usuario) {
