@@ -17,6 +17,81 @@ enum EstadoPermissaoNotificacoes: Equatable, Sendable {
     case provisoria
 }
 
+@MainActor
+final class EstadoSpotsSalvosNotificacoes {
+    static let compartilhado = EstadoSpotsSalvosNotificacoes()
+
+    private var usuarioID: UUID?
+    private var identificadores: Set<UUID> = []
+    private var revisoes: [UUID: Int] = [:]
+    private var sequenciaMutacoes = 0
+    private var ultimaMutacao: [UUID: Int] = [:]
+
+    private init() {}
+
+    func ativar(usuarioID: UUID) {
+        guard self.usuarioID != usuarioID else { return }
+        self.usuarioID = usuarioID
+        identificadores = []
+        revisoes = [:]
+        sequenciaMutacoes = 0
+        ultimaMutacao = [:]
+    }
+
+    func limpar() {
+        usuarioID = nil
+        identificadores = []
+        revisoes = [:]
+        sequenciaMutacoes = 0
+        ultimaMutacao = [:]
+    }
+
+    var sequenciaAtual: Int { sequenciaMutacoes }
+
+    func substituir(
+        _ novos: Set<UUID>,
+        usuarioID: UUID,
+        consultaIniciadaNa sequencia: Int
+    ) {
+        guard self.usuarioID == usuarioID else { return }
+        var reconciliados = novos
+        for (id, ultima) in ultimaMutacao where ultima > sequencia {
+            if identificadores.contains(id) { reconciliados.insert(id) }
+            else { reconciliados.remove(id) }
+        }
+        for id in identificadores.symmetricDifference(reconciliados) {
+            revisoes[id, default: 0] += 1
+        }
+        identificadores = reconciliados
+    }
+
+    @discardableResult
+    func definir(_ salvo: Bool, spotID: UUID, usuarioID: UUID) -> Int? {
+        guard self.usuarioID == usuarioID else { return nil }
+        if salvo { identificadores.insert(spotID) }
+        else { identificadores.remove(spotID) }
+        revisoes[spotID, default: 0] += 1
+        sequenciaMutacoes += 1
+        ultimaMutacao[spotID] = sequenciaMutacoes
+        return revisoes[spotID]
+    }
+
+    func contem(_ spotID: UUID) -> Bool {
+        identificadores.contains(spotID)
+    }
+
+    func identificadoresAtuais() -> Set<UUID> { identificadores }
+
+    func revisaoSeSalvo(_ spotID: UUID) -> Int? {
+        guard identificadores.contains(spotID) else { return nil }
+        return revisoes[spotID, default: 0]
+    }
+
+    func permaneceSalvo(_ spotID: UUID, revisao: Int) -> Bool {
+        identificadores.contains(spotID) && revisoes[spotID] == revisao
+    }
+}
+
 final class Notificacoes {
     static let emailSuporte = "suporte@makerspot.app"
     static let categoriaModeracao = "MAKERSPOT_MODERACAO"
@@ -29,9 +104,14 @@ final class Notificacoes {
     private static let chavePapel = "makerSpot.papel"
 
     private let central: UNUserNotificationCenter
+    private let cliente: ClienteCloudKit
 
-    init(central: UNUserNotificationCenter = .current()) {
+    init(
+        central: UNUserNotificationCenter = .current(),
+        cliente: ClienteCloudKit = ClienteCloudKit()
+    ) {
         self.central = central
+        self.cliente = cliente
     }
 
     func solicitarPermissao() async throws -> Bool {
@@ -183,34 +263,49 @@ final class Notificacoes {
             return false
         }
 
+        guard let revisao = EstadoSpotsSalvosNotificacoes.compartilhado
+            .revisaoSeSalvo(spotID) else {
+            cancelarLembretes(spotID: spotID, papel: .salvo)
+            return true
+        }
+
         if notificacao.queryNotificationReason == .recordDeleted {
             cancelarLembretes(spotID: spotID, papel: .salvo)
             return true
         }
 
-        guard notificacao.queryNotificationReason == .recordUpdated,
-              let campos = notificacao.recordFields else {
+        guard notificacao.queryNotificationReason == .recordUpdated else {
             return true
         }
 
-        let tipo = Self.texto(campos[CampoCloudKit.Spot.tipo])
-        let estaAtivo = Self.booleano(campos[CampoCloudKit.Spot.estaAtivo]) ?? true
-        guard tipo == TipoSpot.evento.rawValue,
-              estaAtivo,
-              let inicio = campos[CampoCloudKit.Spot.inicioEvento] as? Date else {
+        let registro: CKRecord
+        do {
+            registro = try await cliente.buscar(
+                IdentificadorCloudKit.spot(spotID),
+                tipo: .spot
+            )
+        } catch ErroCloudKit.registroNaoEncontrado {
             cancelarLembretes(spotID: spotID, papel: .salvo)
             return true
         }
-
-        try await agendarLembretes(
-            eventoID: spotID,
-            nome: Self.texto(campos[CampoCloudKit.Spot.nome]) ?? "Evento",
-            inicio: inicio,
-            fusoHorarioID: Self.texto(
-                campos[CampoCloudKit.Spot.fusoHorarioID]
-            ) ?? TimeZone.current.identifier,
-            papel: .salvo
-        )
+        guard let spot = try? ApoioCRUD.spotValido(de: registro) else {
+            cancelarLembretes(spotID: spotID, papel: .salvo)
+            return true
+        }
+        guard EstadoSpotsSalvosNotificacoes.compartilhado.permaneceSalvo(
+            spotID,
+            revisao: revisao
+        ) else {
+            cancelarLembretes(spotID: spotID, papel: .salvo)
+            return true
+        }
+        try await agendarLembretes(para: spot, papel: .salvo)
+        if !EstadoSpotsSalvosNotificacoes.compartilhado.permaneceSalvo(
+            spotID,
+            revisao: revisao
+        ) {
+            cancelarLembretes(spotID: spotID, papel: .salvo)
+        }
         return true
     }
 
@@ -371,9 +466,4 @@ final class Notificacoes {
         return nil
     }
 
-    private static func booleano(_ valor: Any?) -> Bool? {
-        if let valor = valor as? Bool { return valor }
-        if let numero = valor as? NSNumber { return numero.boolValue }
-        return nil
-    }
 }

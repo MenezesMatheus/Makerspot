@@ -43,16 +43,11 @@ struct TodosEspacosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar espaço", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar espaço") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar espaço")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },

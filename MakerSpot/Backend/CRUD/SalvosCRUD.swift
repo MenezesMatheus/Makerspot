@@ -105,10 +105,28 @@ final class SalvosCRUD {
         do {
             try await cliente.excluir(identificador, tipo: .spotSalvo)
         } catch ErroCloudKit.registroNaoEncontrado {
+        } catch {
+            let erroOriginal = error
+            do {
+                _ = try await cliente.buscar(identificador, tipo: .spotSalvo)
+                throw erroOriginal
+            } catch ErroCloudKit.registroNaoEncontrado {
+                // A resposta da exclusão se perdeu, mas o registro sumiu.
+            }
         }
         // Notificações são complementares e não precisam atrasar a interface.
         alteracoes.dessalvar(spotID)
-        Task { try? await assinaturas.removerAssinatura(do: spotID) }
+        EstadoSpotsSalvosNotificacoes.compartilhado.definir(
+            false,
+            spotID: spotID,
+            usuarioID: contexto.usuario.id
+        )
+        Task {
+            try? await assinaturas.removerAssinatura(do: spotID)
+            if EstadoSpotsSalvosNotificacoes.compartilhado.contem(spotID) {
+                try? await assinaturas.garantirAssinatura(para: spotID)
+            }
+        }
         notificacoes.cancelarLembretes(spotID: spotID, papel: .salvo)
     }
 
@@ -130,9 +148,17 @@ final class SalvosCRUD {
 
     func listar() async throws -> [SpotSalvo] {
         let contexto = try await autorizacao.contextoAtual()
+        let sequenciaInicial = EstadoSpotsSalvosNotificacoes.compartilhado.sequenciaAtual
         let salvos = try await listarRegistros(do: contexto.usuario)
         let identificadores = Set(salvos.map(\.spotID))
-        Task { try? await assinaturas.reconciliarAssinaturas(com: identificadores) }
+        EstadoSpotsSalvosNotificacoes.compartilhado.substituir(
+            identificadores,
+            usuarioID: contexto.usuario.id,
+            consultaIniciadaNa: sequenciaInicial
+        )
+        Task {
+            try? await assinaturas.reconciliarAssinaturas()
+        }
         return salvos
     }
 
@@ -166,11 +192,32 @@ final class SalvosCRUD {
             return ItemSpotSalvo(registro: salvo, spot: spot)
         }
         let eventosParaLembretes = itens.map(\.spot)
+        let estadoSalvos = EstadoSpotsSalvosNotificacoes.compartilhado
+        let revisoesAoIniciar = Dictionary(
+            uniqueKeysWithValues: eventosParaLembretes.compactMap { spot in
+                estadoSalvos.revisaoSeSalvo(spot.id).map { (spot.id, $0) }
+            }
+        )
         Task {
             try? await notificacoes.sincronizarLembretes(
-                eventos: eventosParaLembretes,
+                eventos: eventosParaLembretes.filter { estadoSalvos.contem($0.id) },
                 papel: .salvo
             )
+            for spot in eventosParaLembretes where
+                !estadoSalvos.contem(spot.id) {
+                notificacoes.cancelarLembretes(spotID: spot.id, papel: .salvo)
+            }
+            // Uma gravação posterior pode ter ocorrido enquanto a lista era
+            // sincronizada. Reponha os lembretes desse estado mais recente.
+            for id in estadoSalvos.identificadoresAtuais()
+                where revisoesAoIniciar[id] != estadoSalvos.revisaoSeSalvo(id) {
+                guard let registro = try? await cliente.buscar(
+                    IdentificadorCloudKit.spot(id),
+                    tipo: .spot
+                ), let spot = try? ApoioCRUD.spotValido(de: registro),
+                   estadoSalvos.contem(id) else { continue }
+                try? await notificacoes.agendarLembretes(para: spot, papel: .salvo)
+            }
         }
         return itens
     }
@@ -254,15 +301,40 @@ final class SalvosCRUD {
         spot: Spot
     ) -> SpotSalvo {
         alteracoes.salvar(salvo, spot: spot)
+        let revisao = EstadoSpotsSalvosNotificacoes.compartilhado.definir(
+            true,
+            spotID: spot.id,
+            usuarioID: salvo.usuarioID
+        )
         Task {
             try? await assinaturas.garantirAssinatura(para: spot.id)
+            guard let revisao,
+                  EstadoSpotsSalvosNotificacoes.compartilhado.permaneceSalvo(
+                    spot.id,
+                    revisao: revisao
+                  ) else {
+                if !EstadoSpotsSalvosNotificacoes.compartilhado.contem(spot.id) {
+                    try? await assinaturas.removerAssinatura(do: spot.id)
+                }
+                return
+            }
             let estado = await notificacoes.verificarPermissao()
             guard estado == .autorizada || estado == .provisoria else { return }
             notificacoes.registrarParaNotificacoesRemotas()
+            guard EstadoSpotsSalvosNotificacoes.compartilhado.permaneceSalvo(
+                spot.id,
+                revisao: revisao
+            ) else { return }
             try? await notificacoes.agendarLembretes(
                 para: spot,
                 papel: .salvo
             )
+            if !EstadoSpotsSalvosNotificacoes.compartilhado.permaneceSalvo(
+                spot.id,
+                revisao: revisao
+            ), !EstadoSpotsSalvosNotificacoes.compartilhado.contem(spot.id) {
+                notificacoes.cancelarLembretes(spotID: spot.id, papel: .salvo)
+            }
         }
         return salvo
     }

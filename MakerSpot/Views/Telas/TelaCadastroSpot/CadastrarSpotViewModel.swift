@@ -236,16 +236,18 @@ final class CadastrarSpotViewModel {
         return "Deseja cadastrar o \(nomeTipo) \(nome)?"
     }
 
-    @ObservationIgnored private let criarSpot: (DadosSpot) async throws -> Spot
+    @ObservationIgnored private let criarSpot: (DadosSpot, UUID) async throws -> Spot
     @ObservationIgnored private let enviarFoto: (URL, UUID) async throws -> Spot
     @ObservationIgnored private var arquivosEnviados: Set<URL> = []
     @ObservationIgnored private var dadosEnviados: DadosSpot?
+    @ObservationIgnored private var dadosDaTentativa: DadosSpot?
+    @ObservationIgnored private var idDaTentativa: UUID?
 
     init(
         telefoneSugerido: String? = nil,
         agora: Date = Date(),
         fusoHorario: TimeZone = .current,
-        criarSpot: @escaping (DadosSpot) async throws -> Spot,
+        criarSpot: @escaping (DadosSpot, UUID) async throws -> Spot,
         enviarFoto: @escaping (URL, UUID) async throws -> Spot
     ) {
         self.telefoneSugerido = ApoioCRUD.textoOpcional(telefoneSugerido)
@@ -263,7 +265,7 @@ final class CadastrarSpotViewModel {
     ) {
         self.init(
             telefoneSugerido: telefoneSugerido,
-            criarSpot: { try await spotCRUD.criar($0) },
+            criarSpot: { dados, id in try await spotCRUD.criar(dados, id: id) },
             enviarFoto: { arquivo, id in
                 try await fotoCRUD.enviarParaSpot(arquivoURL: arquivo, spotID: id).spotAtualizado
             }
@@ -445,7 +447,13 @@ final class CadastrarSpotViewModel {
             if let existente = spotCriado {
                 spot = existente
             } else {
-                spot = try await criarSpot(dados)
+                if dadosDaTentativa != dados {
+                    dadosDaTentativa = dados
+                    idDaTentativa = UUID()
+                }
+                let id = idDaTentativa ?? UUID()
+                idDaTentativa = id
+                spot = try await criarSpot(dados, id)
                 spotCriado = spot
                 dadosEnviados = dados
             }

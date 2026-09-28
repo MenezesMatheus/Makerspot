@@ -43,16 +43,11 @@ struct TodosEventosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar evento", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar evento") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar evento")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },

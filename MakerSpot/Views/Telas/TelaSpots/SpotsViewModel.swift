@@ -39,12 +39,12 @@ final class SpotsViewModel {
 
     var eventosEmDestaque: [Spot] {
         let agora = Date()
-        let eventosFuturos = spots.filter { spot in
+        let eventosDisponiveis = spots.filter { spot in
             guard case .evento(let evento) = spot.detalhes else { return false }
-            return evento.inicio >= agora
+            return evento.termino >= agora
         }
 
-        return Array(eventosFuturos.sorted(by: ordenarEventos).prefix(3))
+        return Array(eventosDisponiveis.sorted(by: ordenarEventos).prefix(3))
     }
 
     var espacosEmDestaque: [Spot] {

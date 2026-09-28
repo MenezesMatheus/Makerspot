@@ -38,6 +38,10 @@ final class UsuarioCRUD {
             nome: "uma credencial Apple válida"
         )
         let identificadorCloudKit = try await cliente.verificarConta()
+        try await autorizacao.validarUsuarioAtivo(
+            appleUserID: identificadorApple,
+            cloudKitUserRecordName: identificadorCloudKit.recordName
+        )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
             cloudKitUserRecordName: identificadorCloudKit.recordName
@@ -105,9 +109,6 @@ final class UsuarioCRUD {
             }
         }
 
-        try await autorizacao.validarUsuarioAtivo(
-            cloudKitUserRecordName: identificadorCloudKit.recordName
-        )
         try sessao.iniciar(com: usuario)
         return usuario
     }
@@ -126,6 +127,10 @@ final class UsuarioCRUD {
         }
 
         let identificadorCloudKit = try await cliente.verificarConta()
+        try await autorizacao.validarUsuarioAtivo(
+            appleUserID: identificadorApple,
+            cloudKitUserRecordName: identificadorCloudKit.recordName
+        )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
             cloudKitUserRecordName: identificadorCloudKit.recordName
@@ -140,9 +145,6 @@ final class UsuarioCRUD {
             throw ErroCRUD.contaCloudKitDivergente
         }
 
-        try await autorizacao.validarUsuarioAtivo(
-            cloudKitUserRecordName: identificadorCloudKit.recordName
-        )
         sessao.restaurar(encontrado.usuario)
         return encontrado.usuario
     }
@@ -160,6 +162,26 @@ final class UsuarioCRUD {
         }
         sessao.restaurar(usuario)
         return usuario
+    }
+
+    /// Consulta o banimento sem usar o cache de validação da sessão ao voltar ao app.
+    func verificarBanimentoDaSessaoAtual() async throws {
+        guard let usuario = sessao.usuarioAtual else { return }
+        let identificadorCloudKit = try await cliente.verificarConta()
+        guard usuario.cloudKitUserRecordName == identificadorCloudKit.recordName else {
+            throw ErroCRUD.contaCloudKitDivergente
+        }
+        do {
+            try await autorizacao.validarUsuarioAtivo(
+                appleUserID: usuario.appleUserID,
+                cloudKitUserRecordName: identificadorCloudKit.recordName
+            )
+        } catch ErroCRUD.usuarioBanido {
+            if sessao.usuarioAtual?.id == usuario.id {
+                sessao.bloquear()
+            }
+            throw ErroCRUD.usuarioBanido
+        }
     }
 
     func atualizarPerfil(_ dados: DadosPerfilUsuario) async throws -> Usuario {

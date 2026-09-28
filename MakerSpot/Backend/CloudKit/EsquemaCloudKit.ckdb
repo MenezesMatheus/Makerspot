@@ -2,6 +2,7 @@ DEFINE SCHEMA
     CREATE ROLE ModeradorMakerSpot;
 
     RECORD TYPE Usuario (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         appleUserID STRING,
@@ -15,6 +16,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE FotoPerfil (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         enviadaPorID STRING,
@@ -27,6 +29,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE SpotSalvo (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING SORTABLE,
         versaoEsquema INT64,
         usuarioID STRING QUERYABLE,
@@ -36,6 +39,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE Spot (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING QUERYABLE SORTABLE,
         versaoEsquema INT64,
         proprietarioID STRING QUERYABLE,
@@ -70,6 +74,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE FotoSpot (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         enviadaPorID STRING QUERYABLE,
@@ -85,6 +90,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE Denuncia (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         spotID STRING QUERYABLE,
@@ -97,6 +103,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE AnaliseDenuncia (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         denunciaID STRING QUERYABLE,
@@ -108,6 +115,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE BanimentoUsuario (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         contaHash STRING,
@@ -117,6 +125,7 @@ DEFINE SCHEMA
     );
 
     RECORD TYPE NotificacaoModeracao (
+        "___recordID" REFERENCE QUERYABLE,
         id STRING,
         versaoEsquema INT64,
         destinatarioID STRING QUERYABLE,

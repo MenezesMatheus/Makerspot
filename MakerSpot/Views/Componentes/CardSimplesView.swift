@@ -248,7 +248,10 @@ struct CardSimplesView: View {
             podeSalvar,
             aoAlternar
         ):
-            Button(action: aoAlternar) {
+            Button {
+                guard !estaProcessando else { return }
+                aoAlternar()
+            } label: {
                 Group {
                     if !podeSalvar {
                         Image(systemName: "person.crop.circle.badge.checkmark")
@@ -261,14 +264,13 @@ struct CardSimplesView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .disabled(!podeSalvar || estaProcessando)
+            .disabled(!podeSalvar)
             .opacity(podeSalvar ? 1 : 0.45)
             .accessibilityLabel(
                 !podeSalvar
                     ? "Seu Spot"
                     : (estaSalvo ? "Remover dos salvos" : "Salvar Spot")
             )
-            .accessibilityValue(estaProcessando ? "Atualizando" : "")
 
         case let .proprietario(
             estaAtivo,
@@ -287,7 +289,6 @@ struct CardSimplesView: View {
             )
             .labelsHidden()
             .tint(dados.tipo.corDestaque)
-            .disabled(estaProcessando)
             .accessibilityLabel("Oferta ativa")
             .accessibilityValue(estaAtivo ? "Ativada" : "Desativada")
             .frame(minWidth: 52, minHeight: 44)

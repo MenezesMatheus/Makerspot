@@ -249,7 +249,10 @@ struct CardEvento: View {
     }
 
     private var botaoSalvar: some View {
-        Button(action: aoAlternarSalvo) {
+        Button {
+            guard !estaAlterandoSalvo else { return }
+            aoAlternarSalvo()
+        } label: {
             Group {
                 if !podeSalvar {
                     Image(systemName: "person.crop.circle.badge.checkmark")
@@ -264,14 +267,13 @@ struct CardEvento: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!podeSalvar || estaAlterandoSalvo)
+        .disabled(!podeSalvar)
         .opacity(podeSalvar ? 1 : 0.45)
         .accessibilityLabel(
             !podeSalvar
                 ? "Seu Spot"
                 : (estaSalvo ? "Remover dos salvos" : "Salvar Spot")
         )
-        .accessibilityValue(estaAlterandoSalvo ? "Atualizando" : "")
     }
 }
 

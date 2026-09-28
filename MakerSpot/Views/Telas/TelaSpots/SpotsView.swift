@@ -34,16 +34,11 @@ struct SpotsView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Adicionar Spot", systemImage: "plus") {
+                    BotaoAdicionarToolbar(titulo: "Adicionar Spot") {
                         viewModel.iniciarCadastro()
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.extraLarge)
-                    .tint(.accentColor)
-                    .accessibilityLabel("Adicionar Spot")
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
             .navigationDestination(isPresented: Binding(
                 get: { viewModel.cadastro != nil },

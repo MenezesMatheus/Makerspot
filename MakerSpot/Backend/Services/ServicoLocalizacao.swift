@@ -138,8 +138,6 @@ final class ServicoLocalizacao {
     }
 }
 
-///Users/salesmaju/Documents/Makerspot/MakerSpot/Backend/Services/ServicoLocalizacao.swift:108 This method can cause UI unresponsiveness if invoked on the main thread. Instead, consider waiting for the `-locationManagerDidChangeAuthorization:` callback and checking `authorizationStatus` first.
-
 @MainActor
 final class ServicoLocalizacaoUsuario: NSObject, CLLocationManagerDelegate {
     private let gerenciador = CLLocationManager()
@@ -152,8 +150,6 @@ final class ServicoLocalizacaoUsuario: NSObject, CLLocationManagerDelegate {
     }
 
     func obterCoordenadas() async -> Coordenadas? {
-        guard CLLocationManager.locationServicesEnabled() else { return nil }
-
         if let localizacao = gerenciador.location {
             return Self.coordenadas(de: localizacao)
         }

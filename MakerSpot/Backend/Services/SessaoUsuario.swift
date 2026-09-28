@@ -45,11 +45,13 @@ final class SessaoUsuario {
         try ChaveiroSessao.salvar(usuario.appleUserID)
         invalidarValidacaoCloudKitSeNecessario(para: usuario)
         usuarioAtual = usuario
+        EstadoSpotsSalvosNotificacoes.compartilhado.ativar(usuarioID: usuario.id)
     }
 
     func restaurar(_ usuario: Usuario) {
         invalidarValidacaoCloudKitSeNecessario(para: usuario)
         usuarioAtual = usuario
+        EstadoSpotsSalvosNotificacoes.compartilhado.ativar(usuarioID: usuario.id)
     }
 
     func identificadorAppleSalvo() throws -> String? {
@@ -60,6 +62,15 @@ final class SessaoUsuario {
         try ChaveiroSessao.remover()
         invalidarValidacaoCloudKit()
         usuarioAtual = nil
+        EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
+        alteracoesSpots.limpar()
+    }
+
+    func bloquear() {
+        try? ChaveiroSessao.remover()
+        invalidarValidacaoCloudKit()
+        usuarioAtual = nil
+        EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
         alteracoesSpots.limpar()
     }
 

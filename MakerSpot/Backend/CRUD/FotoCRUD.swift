@@ -222,7 +222,12 @@ final class FotoCRUD {
 
     func definirFotoPerfil(arquivoURL: URL) async throws -> FotoDisponivel {
         let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
-        defer { try? gerenciadorArquivos.removeItem(at: arquivoPreparado) }
+        var manterArquivoTemporario = false
+        defer {
+            if !manterArquivoTemporario {
+                try? gerenciadorArquivos.removeItem(at: arquivoPreparado)
+            }
+        }
 
         try await validarSegurancaDaFoto(arquivoPreparado)
 
@@ -274,7 +279,15 @@ final class FotoCRUD {
         }
 
         sessao.restaurar(usuarioAtualizado)
-        let arquivoEmCache = try copiarParaCache(arquivoPreparado, fotoID: foto.id)
+        // O perfil já foi gravado no CloudKit. Falha no cache local não pode
+        // transformar essa gravação bem-sucedida em erro de envio.
+        let arquivoEmCache: URL
+        if let copiado = try? copiarParaCache(arquivoPreparado, fotoID: foto.id) {
+            arquivoEmCache = copiado
+        } else {
+            manterArquivoTemporario = true
+            arquivoEmCache = arquivoPreparado
+        }
         if let fotoAnteriorID {
             await excluirFotoPerfilSeExistir(fotoAnteriorID)
             removerDoCache(fotoID: fotoAnteriorID)

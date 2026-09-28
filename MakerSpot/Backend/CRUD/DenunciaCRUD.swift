@@ -22,7 +22,11 @@ final class DenunciaCRUD {
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
     }
 
-    func denunciar(spotID: UUID, texto: String) async throws -> Denuncia {
+    func denunciar(
+        spotID: UUID,
+        texto: String,
+        id: UUID = UUID()
+    ) async throws -> Denuncia {
         let contexto = try await autorizacao.contextoAtual()
         let motivo = try ApoioCRUD.textoObrigatorio(
             texto,
@@ -48,14 +52,26 @@ final class DenunciaCRUD {
         }
 
         let denuncia = Denuncia(
-            id: UUID(),
+            id: id,
             spotID: spot.id,
             texto: motivo,
             criadaEm: Date()
         )
         let registro = try ConversorRegistroCloudKit.registro(de: denuncia)
-        return try ConversorRegistroCloudKit.denuncia(
-            de: try await cliente.salvar(registro)
-        )
+        do {
+            return try ConversorRegistroCloudKit.denuncia(
+                de: try await cliente.salvar(registro)
+            )
+        } catch {
+            let erroOriginal = error
+            guard let remoto = try? await cliente.buscar(registro.recordID, tipo: .denuncia),
+                  let confirmada = try? ConversorRegistroCloudKit.denuncia(de: remoto),
+                  confirmada.id == denuncia.id,
+                  confirmada.spotID == denuncia.spotID,
+                  confirmada.texto == denuncia.texto else {
+                throw erroOriginal
+            }
+            return confirmada
+        }
     }
 }

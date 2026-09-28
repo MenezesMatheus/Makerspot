@@ -23,6 +23,8 @@ final class ReportarSpotViewModel: Identifiable {
     var id: UUID { spotID }
 
     private let crud: DenunciaCRUD
+    @ObservationIgnored private var idDaTentativa: UUID?
+    @ObservationIgnored private var textoDaTentativa: String?
 
     var quantidadeCaracteresRestantes: Int {
         max(0, limiteCaracteres - texto.count)
@@ -58,9 +60,17 @@ final class ReportarSpotViewModel: Identifiable {
         defer { estaEnviando = false }
 
         do {
+            let motivo = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+            if textoDaTentativa != motivo {
+                textoDaTentativa = motivo
+                idDaTentativa = UUID()
+            }
+            let id = idDaTentativa ?? UUID()
+            idDaTentativa = id
             denunciaEnviada = try await crud.denunciar(
                 spotID: spotID,
-                texto: texto
+                texto: texto,
+                id: id
             )
             return true
         } catch ErroCloudKit.operacaoCancelada {
@@ -77,6 +87,8 @@ final class ReportarSpotViewModel: Identifiable {
         guard !estaEnviando else { return }
         texto = ""
         denunciaEnviada = nil
+        idDaTentativa = nil
+        textoDaTentativa = nil
         mensagemDeErro = nil
     }
 }

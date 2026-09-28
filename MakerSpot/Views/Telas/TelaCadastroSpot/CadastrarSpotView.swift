@@ -12,6 +12,7 @@ struct CadastrarSpotView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: CadastrarSpotViewModel
     @State private var itensSelecionados: [PhotosPickerItem] = []
+    @State private var horarioSelecionado: HorarioFuncionamentoCadastro?
     @FocusState private var campoFocado: Bool
 
     init(viewModel: CadastrarSpotViewModel) {
@@ -80,6 +81,11 @@ struct CadastrarSpotView: View {
             )
         }
         .interactiveDismissDisabled(viewModel.bloqueiaInteracao)
+        .sheet(item: $horarioSelecionado) { horario in
+            SelecaoDiasFuncionamento(dias: diasDoHorario(id: horario.id))
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         .onChange(of: viewModel.deveFechar) { _, deveFechar in
             if deveFechar { dismiss() }
         }
@@ -118,8 +124,10 @@ struct CadastrarSpotView: View {
                 secaoHorarioEvento
                     .disabled(viewModel.spotCriado != nil)
             } else {
-                FuncionamentoEspacoView(viewModel: viewModel)
-                    .disabled(viewModel.spotCriado != nil)
+                FuncionamentoEspacoView(viewModel: viewModel) { horario in
+                    horarioSelecionado = horario
+                }
+                .disabled(viewModel.spotCriado != nil)
             }
 
             secaoTelefone
@@ -376,10 +384,22 @@ struct CadastrarSpotView: View {
         Binding(get: { texto.wrappedValue ?? "" }, set: { texto.wrappedValue = $0 })
     }
 
+    private func diasDoHorario(id: UUID) -> Binding<Set<DiaSemana>> {
+        Binding(
+            get: { viewModel.horariosFuncionamento.first { $0.id == id }?.dias ?? [] },
+            set: { novosDias in
+                guard let indice = viewModel.horariosFuncionamento.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                viewModel.horariosFuncionamento[indice].dias = novosDias
+            }
+        )
+    }
 }
 
 private struct FuncionamentoEspacoView: View {
     @Bindable var viewModel: CadastrarSpotViewModel
+    let aoSelecionarDias: (HorarioFuncionamentoCadastro) -> Void
 
     var body: some View {
         if viewModel.horariosFuncionamento.isEmpty {
@@ -394,6 +414,7 @@ private struct FuncionamentoEspacoView: View {
                 SecaoHorarioEspaco(
                     horario: $horario,
                     fusoHorario: viewModel.fusoHorario,
+                    aoSelecionarDias: { aoSelecionarDias(horario) },
                     aoRemover: { viewModel.removerHorario(id: horario.id) }
                 )
             }
@@ -420,12 +441,12 @@ private struct FuncionamentoEspacoView: View {
 private struct SecaoHorarioEspaco: View {
     @Binding var horario: HorarioFuncionamentoCadastro
     let fusoHorario: TimeZone
+    let aoSelecionarDias: () -> Void
     let aoRemover: () -> Void
-    @State private var mostraDias = false
 
     var body: some View {
         Section {
-            Button { mostraDias = true } label: {
+            Button(action: aoSelecionarDias) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
                         Text("Dias de funcionamento").foregroundStyle(Color.primary)
@@ -455,11 +476,6 @@ private struct SecaoHorarioEspaco: View {
         }
         .datePickerStyle(.compact)
         .environment(\.timeZone, fusoHorario)
-        .sheet(isPresented: $mostraDias) {
-            SelecaoDiasFuncionamento(dias: $horario.dias)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
     }
 
     private var resumoDias: some View {

@@ -48,13 +48,13 @@ final class SpotCRUD {
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
     }
 
-    func criar(_ dados: DadosSpot) async throws -> Spot {
+    func criar(_ dados: DadosSpot, id: UUID = UUID()) async throws -> Spot {
         let contexto = try await autorizacao.contextoAtual()
         let dados = try ValidadorSpotCRUD.validarENormalizar(dados)
         let coordenadas = try await localizacao.buscarCoordenadas(para: dados.endereco)
         let agora = Date()
         let spot = Spot(
-            id: UUID(),
+            id: id,
             proprietarioID: contexto.usuario.id,
             nomePublicador: ApoioCRUD.nomePublico(do: contexto.usuario),
             nome: dados.nome,
@@ -75,9 +75,21 @@ final class SpotCRUD {
         )
 
         let registro = try ConversorRegistroCloudKit.registro(de: spot)
-        let criado = try ConversorRegistroCloudKit.spot(
-            de: try await cliente.salvar(registro)
-        )
+        let criado: Spot
+        do {
+            criado = try ConversorRegistroCloudKit.spot(
+                de: try await cliente.salvar(registro)
+            )
+        } catch {
+            let erroOriginal = error
+            guard let remoto = try? await cliente.buscar(registro.recordID, tipo: .spot),
+                  let confirmado = try? ApoioCRUD.spotValido(de: remoto),
+                  confirmado.id == spot.id,
+                  confirmado.proprietarioID == spot.proprietarioID else {
+                throw erroOriginal
+            }
+            criado = confirmado
+        }
         atualizarLembretesEmSegundoPlano(para: criado)
         alteracoes.atualizar(criado)
         return criado
@@ -245,7 +257,18 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
-        try await cliente.excluir(registro.recordID, tipo: .spot)
+        do {
+            try await cliente.excluir(registro.recordID, tipo: .spot)
+        } catch ErroCloudKit.registroNaoEncontrado {
+        } catch {
+            let erroOriginal = error
+            do {
+                _ = try await cliente.buscar(registro.recordID, tipo: .spot)
+                throw erroOriginal
+            } catch ErroCloudKit.registroNaoEncontrado {
+                // A exclusão foi aplicada mesmo sem uma resposta de sucesso.
+            }
+        }
         alteracoes.excluir(spot.id)
         notificacoes.cancelarLembretes(
             spotID: spot.id,

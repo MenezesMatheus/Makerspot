@@ -281,10 +281,7 @@ struct DetalhesSpotView: View {
                         )
                     }
                     .labelStyle(.iconOnly)
-                    .disabled(
-                        viewModel.estaAlterandoSalvo
-                            || !viewModel.carregouEstadoSalvo
-                    )
+                    .disabled(!viewModel.carregouEstadoSalvo)
                 }
             }
         }

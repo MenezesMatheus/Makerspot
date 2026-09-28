@@ -57,16 +57,11 @@ struct MeusEventosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar evento", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar evento") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar evento")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },
@@ -184,8 +179,6 @@ struct MeusEventosView: View {
                 .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
-                .opacity(viewModel.spotEmAlteracao == spot.id ? 0.5 : 1)
-                .disabled(viewModel.spotEmAlteracao == spot.id)
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
                         idParaExcluir = spot.id
