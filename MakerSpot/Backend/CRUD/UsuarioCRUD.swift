@@ -40,7 +40,11 @@ final class UsuarioCRUD {
         let identificadorCloudKit = try await cliente.verificarConta()
         try await autorizacao.validarUsuarioAtivo(
             appleUserID: identificadorApple,
-            cloudKitUserRecordName: identificadorCloudKit.recordName
+            cloudKitUserRecordName: identificadorCloudKit.recordName,
+            usuarioID: identificadorDeterministico(
+                appleUserID: identificadorApple,
+                cloudKitUserRecordName: identificadorCloudKit.recordName
+            )
         )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
@@ -129,7 +133,11 @@ final class UsuarioCRUD {
         let identificadorCloudKit = try await cliente.verificarConta()
         try await autorizacao.validarUsuarioAtivo(
             appleUserID: identificadorApple,
-            cloudKitUserRecordName: identificadorCloudKit.recordName
+            cloudKitUserRecordName: identificadorCloudKit.recordName,
+            usuarioID: identificadorDeterministico(
+                appleUserID: identificadorApple,
+                cloudKitUserRecordName: identificadorCloudKit.recordName
+            )
         )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
@@ -174,7 +182,8 @@ final class UsuarioCRUD {
         do {
             try await autorizacao.validarUsuarioAtivo(
                 appleUserID: usuario.appleUserID,
-                cloudKitUserRecordName: identificadorCloudKit.recordName
+                cloudKitUserRecordName: identificadorCloudKit.recordName,
+                usuarioID: usuario.id
             )
         } catch ErroCRUD.usuarioBanido {
             if sessao.usuarioAtual?.id == usuario.id {

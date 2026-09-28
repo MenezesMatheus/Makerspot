@@ -13,6 +13,8 @@ struct PerfilView: View {
     @Bindable private var viewModel: PerfilViewModel
     @State private var itemSelecionado: PhotosPickerItem?
     @State private var mostrandoEdicaoPerfil = false
+    @State private var mostrarOpcoesFoto = false
+    @State private var mostrarSeletorFotos = false
     @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
 
@@ -43,11 +45,60 @@ struct PerfilView: View {
                     VStack {
                         // Foto + nome
                         HStack(spacing: 16) {
-                            PhotosPicker(selection: $itemSelecionado, matching: .images) {
+                            Button {
+                                if viewModel.fotoPerfil != nil {
+                                    mostrarOpcoesFoto = true
+                                } else {
+                                    mostrarSeletorFotos = true
+                                }
+                            } label: {
                                 fotoView
                             }
+                            .buttonStyle(.plain)
                             .disabled(viewModel.estaAlterandoFoto)
+                            .accessibilityLabel(
+                                viewModel.fotoPerfil == nil
+                                    ? "Selecionar foto do perfil"
+                                    : "Opções da foto do perfil"
+                            )
+                            .photosPicker(
+                                isPresented: $mostrarSeletorFotos,
+                                selection: $itemSelecionado,
+                                matching: .images
+                            )
+                            .popover(
+                                isPresented: $mostrarOpcoesFoto,
+                                attachmentAnchor: .point(.bottom),
+                                arrowEdge: .top
+                            ) {
+                                VStack(spacing: 0) {
+                                    PhotosPicker(selection: $itemSelecionado, matching: .images) {
+                                        Label("Selecionar nova foto", systemImage: "photo")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(14)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Divider()
+
+                                    Button(role: .destructive) {
+                                        mostrarOpcoesFoto = false
+                                        Task { await viewModel.removerFotoPerfil() }
+                                    } label: {
+                                        Label("Remover foto", systemImage: "trash")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(14)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.red)
+                                }
+                                .frame(width: 230)
+                                .presentationCompactAdaptation(.popover)
+                            }
                             .onChange(of: itemSelecionado) { _, novoItem in
+                                if novoItem != nil { mostrarOpcoesFoto = false }
                                 Task {
                                     guard let novoItem else { return }
                                     if let data = try? await novoItem.loadTransferable(type: Data.self) {
@@ -57,6 +108,7 @@ struct PerfilView: View {
                                         defer { try? FileManager.default.removeItem(at: url) }
                                         await viewModel.definirFotoPerfil(arquivoURL: url)
                                     }
+                                    itemSelecionado = nil
                                 }
                             }
 

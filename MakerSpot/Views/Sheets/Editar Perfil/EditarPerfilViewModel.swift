@@ -15,6 +15,7 @@ final class EditarPerfilViewModel {
     var sobrenome: String
     var telefonePadrao: String
     private(set) var novaFotoDados: Data?
+    private(set) var removerFotoAtual = false
 
     private(set) var usuario: Usuario
     private(set) var fotoPerfil: FotoDisponivel?
@@ -27,7 +28,7 @@ final class EditarPerfilViewModel {
     private let fotoCRUD: FotoCRUD
 
     var fotoFoiAlterada: Bool {
-        novaFotoDados != nil
+        novaFotoDados != nil || removerFotoAtual
     }
 
     var telefoneFoiAlterado: Bool {
@@ -43,12 +44,15 @@ final class EditarPerfilViewModel {
 
     var descricaoAlteracoesParaConfirmacao: String? {
         guard temAlteracoes else { return nil }
+        let acaoFoto = removerFotoAtual
+            ? "removeu sua foto de perfil"
+            : "alterou sua foto de perfil"
 
         switch (fotoFoiAlterada, telefoneFoiAlterado) {
         case (true, true):
-            return "Você alterou sua foto de perfil e seu número de telefone."
+            return "Você \(acaoFoto) e alterou seu número de telefone."
         case (true, false):
-            return "Você alterou sua foto de perfil."
+            return "Você \(acaoFoto)."
         case (false, true):
             return "Você alterou seu número de telefone."
         case (false, false):
@@ -106,7 +110,16 @@ final class EditarPerfilViewModel {
             return
         }
         novaFotoDados = dados
+        removerFotoAtual = false
         mensagemDeErro = nil
+    }
+
+    func removerFoto() {
+        if novaFotoDados != nil {
+            novaFotoDados = nil
+        } else if fotoPerfil != nil {
+            removerFotoAtual = true
+        }
     }
 
     @discardableResult
@@ -134,6 +147,11 @@ final class EditarPerfilViewModel {
             if let novaFotoDados {
                 fotoPerfil = try await enviarFoto(novaFotoDados)
                 self.novaFotoDados = nil
+                atualizado = try await crud.buscarUsuarioAtual()
+            } else if removerFotoAtual {
+                try await fotoCRUD.removerFotoPerfil()
+                fotoPerfil = nil
+                removerFotoAtual = false
                 atualizado = try await crud.buscarUsuarioAtual()
             }
 
@@ -179,6 +197,7 @@ final class EditarPerfilViewModel {
 
     func descartarAlteracoes() {
         novaFotoDados = nil
+        removerFotoAtual = false
         aplicar(usuario)
         mensagemDeErro = nil
     }

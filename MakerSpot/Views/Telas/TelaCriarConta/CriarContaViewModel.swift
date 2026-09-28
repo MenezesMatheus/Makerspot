@@ -15,6 +15,7 @@ final class CriarContaViewModel {
     var sobrenome: String
     var telefonePadrao: String
     private(set) var novaFotoDados: Data?
+    private(set) var removerFotoAtual = false
 
     private(set) var usuario: Usuario?
     private(set) var fotoPerfil: FotoDisponivel?
@@ -76,7 +77,16 @@ final class CriarContaViewModel {
             return
         }
         novaFotoDados = dados
+        removerFotoAtual = false
         mensagemDeErro = nil
+    }
+
+    func removerFoto() {
+        if novaFotoDados != nil {
+            novaFotoDados = nil
+        } else if fotoPerfil != nil {
+            removerFotoAtual = true
+        }
     }
 
     @discardableResult
@@ -103,6 +113,11 @@ final class CriarContaViewModel {
             if let novaFotoDados {
                 fotoPerfil = try await enviarFoto(novaFotoDados)
                 self.novaFotoDados = nil
+                atualizado = try await crud.buscarUsuarioAtual()
+            } else if removerFotoAtual {
+                try await fotoCRUD.removerFotoPerfil()
+                fotoPerfil = nil
+                removerFotoAtual = false
                 atualizado = try await crud.buscarUsuarioAtual()
             }
 

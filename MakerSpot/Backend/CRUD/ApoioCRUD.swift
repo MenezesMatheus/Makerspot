@@ -74,7 +74,8 @@ final class AutorizacaoCRUD {
                 }
                 try await validarUsuarioAtivo(
                     appleUserID: usuario.appleUserID,
-                    cloudKitUserRecordName: identificador.recordName
+                    cloudKitUserRecordName: identificador.recordName,
+                    usuarioID: usuario.id
                 )
                 return identificador.recordName
             }
@@ -97,15 +98,24 @@ final class AutorizacaoCRUD {
 
     func validarUsuarioAtivo(
         appleUserID: String,
-        cloudKitUserRecordName: String
+        cloudKitUserRecordName: String,
+        usuarioID: UUID
     ) async throws {
         // Mantém os banimentos antigos por iCloud e também bloqueia novas
         // contas criadas com o mesmo identificador do Sign in with Apple.
         let hashICloud = IdentificadorContaCloudKit.hash(de: cloudKitUserRecordName)
         let hashApple = IdentificadorContaCloudKit.hash(de: appleUserID)
+        // O Spot público expõe apenas o UUID do proprietário. Esse terceiro
+        // identificador permite moderar a conta a partir de um Spot denunciado.
+        let hashUsuario = IdentificadorContaCloudKit.hash(
+            de: usuarioID.uuidString.lowercased()
+        )
         try await verificarBanimento(contaHash: hashICloud)
         if hashApple != hashICloud {
             try await verificarBanimento(contaHash: hashApple)
+        }
+        if hashUsuario != hashICloud && hashUsuario != hashApple {
+            try await verificarBanimento(contaHash: hashUsuario)
         }
     }
 
