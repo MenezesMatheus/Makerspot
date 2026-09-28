@@ -598,6 +598,35 @@ enum ConversorRegistroCloudKit {
         )
     }
 
+    // Restrição de Spot registrada pela moderação no CloudKit Dashboard.
+
+    static func spotRestrito(de registro: CKRecord) throws -> SpotRestrito {
+        try verificarTipo(.spotRestrito, do: registro)
+        let statusTexto: String = try ler(
+            CampoCloudKit.SpotRestrito.status,
+            do: registro
+        )
+        guard let status = StatusRestricaoSpot(rawValue: statusTexto),
+              let criadoEm = registro.creationDate else {
+            throw ErroCRUD.respostaInconsistente
+        }
+        let nome: String = try ler(CampoCloudKit.SpotRestrito.nomeSpot, do: registro)
+        guard !nome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ErroCRUD.respostaInconsistente
+        }
+        return SpotRestrito(
+            id: registro.recordID.recordName,
+            spotID: try uuid(CampoCloudKit.SpotRestrito.spotID, do: registro),
+            proprietarioID: try uuid(
+                CampoCloudKit.SpotRestrito.proprietarioID,
+                do: registro
+            ),
+            nomeSpot: nome,
+            status: status,
+            criadoEm: criadoEm
+        )
+    }
+
     // Apoio à conversão
 
     private static func prepararRegistro(

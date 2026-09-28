@@ -137,3 +137,12 @@ DEFINE SCHEMA
         GRANT READ TO "_icloud",
         GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
     );
+
+    RECORD TYPE SpotRestrito (
+        "___recordID" REFERENCE QUERYABLE,
+        spotID STRING QUERYABLE,
+        proprietarioID STRING QUERYABLE,
+        nomeSpot STRING,
+        status STRING QUERYABLE,
+        GRANT READ TO "_icloud"
+    );

@@ -25,6 +25,7 @@ private struct FluxoPrincipalView: View {
     @State private var sessao = SessaoUsuario()
     @State private var etapa: Etapa
     @State private var roteador = RoteadorNotificacoes.compartilhado
+    @State private var avisosRestricao: [SpotRestrito] = []
     @AppStorage("shouldShowOnBoarding")
     private var shouldShowOnBoarding = true
     private let coordenadorNotificacoes = CoordenadorNotificacoes()
@@ -87,10 +88,15 @@ private struct FluxoPrincipalView: View {
         }
         .task(id: etapa) {
             guard etapa == .principal else { return }
+            await verificarRestricoes()
+        }
+        .task(id: etapa) {
+            guard etapa == .principal else { return }
             await coordenadorNotificacoes.configurar(sessao: sessao)
         }
         .onChange(of: sessao.estaAutenticado) { _, estaAutenticado in
             if !estaAutenticado, etapa == .principal || etapa == .criandoPerfil {
+                avisosRestricao = []
                 etapa = .login
             }
         }
@@ -100,9 +106,16 @@ private struct FluxoPrincipalView: View {
             Task {
                 try? await UsuarioCRUD(sessao: sessao).verificarBanimentoDaSessaoAtual()
                 if etapa == .principal, sessao.estaAutenticado {
-                    await coordenadorNotificacoes.configurar(sessao: sessao)
+                    await verificarRestricoes()
                 }
             }
+            if etapa == .principal {
+                Task { await coordenadorNotificacoes.configurar(sessao: sessao) }
+            }
+        }
+        .onChange(of: roteador.atualizacaoRestricaoSpot) { _, _ in
+            guard etapa == .principal else { return }
+            Task { await verificarRestricoes() }
         }
         .alert(item: $roteador.alertaModeracao) { alerta in
             Alert(
@@ -114,7 +127,58 @@ private struct FluxoPrincipalView: View {
                 secondaryButton: .cancel(Text("Fechar"))
             )
         }
+        .overlay {
+            if etapa == .principal, let aviso = avisoRestricaoParaExibir {
+                PopUpTextoView(
+                    estaApresentado: Binding(
+                        get: { avisoRestricaoParaExibir != nil },
+                        set: { if !$0 { dispensarAvisoRestricao() } }
+                    ),
+                    titulo: "Spot restringido",
+                    subtitulo: aviso.mensagemParaCriador
+                )
+            }
+        }
         .environment(sessao)
+    }
+
+    private var avisoRestricaoParaExibir: SpotRestrito? {
+        guard let usuarioID = sessao.usuarioAtual?.id else { return nil }
+        return roteador.avisosRestricaoSpotPendentes.first {
+            $0.proprietarioID == usuarioID
+        } ?? avisosRestricao.first
+    }
+
+    private func verificarRestricoes() async {
+        guard let usuarioID = sessao.usuarioAtual?.id else { return }
+        do {
+            let restricoes = try await SpotsRestritosCRUD()
+                .listarAtivos(para: usuarioID)
+            guard sessao.usuarioAtual?.id == usuarioID else { return }
+            let vistos = Set(UserDefaults.standard.stringArray(
+                forKey: chaveAvisosVistos(usuarioID)
+            ) ?? [])
+            avisosRestricao = restricoes.filter { !vistos.contains($0.id) }
+        } catch is CancellationError {
+            return
+        } catch {
+            // A próxima abertura ou ativação do app tentará novamente.
+        }
+    }
+
+    private func dispensarAvisoRestricao() {
+        guard let aviso = avisoRestricaoParaExibir,
+              let usuarioID = sessao.usuarioAtual?.id else { return }
+        let chave = chaveAvisosVistos(usuarioID)
+        var vistos = Set(UserDefaults.standard.stringArray(forKey: chave) ?? [])
+        vistos.insert(aviso.id)
+        UserDefaults.standard.set(Array(vistos), forKey: chave)
+        roteador.avisosRestricaoSpotPendentes.removeAll { $0.id == aviso.id }
+        avisosRestricao.removeAll { $0.id == aviso.id }
+    }
+
+    private func chaveAvisosVistos(_ usuarioID: UUID) -> String {
+        "makerspot.spotsRestritos.vistos.\(usuarioID.uuidString.lowercased())"
     }
 
     private func continuarAposAutenticacao() {

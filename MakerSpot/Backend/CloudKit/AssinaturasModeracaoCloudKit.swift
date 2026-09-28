@@ -52,4 +52,37 @@ final class AssinaturasModeracaoCloudKit {
             throw ErroCloudKit.converter(error)
         }
     }
+
+    func garantirAssinaturaSpotsRestritos(para usuarioID: UUID) async throws {
+        let assinatura = CKQuerySubscription(
+            recordType: TipoRegistroCloudKit.spotRestrito.rawValue,
+            predicate: NSPredicate(
+                format: "%K == %@",
+                CampoCloudKit.SpotRestrito.proprietarioID,
+                usuarioID.uuidString.lowercased()
+            ),
+            subscriptionID: IdentificadorCloudKit.assinaturaSpotRestrito(usuarioID),
+            options: [.firesOnRecordCreation]
+        )
+
+        let informacoes = CKSubscription.NotificationInfo()
+        informacoes.title = "MakerSpot"
+        informacoes.alertBody = "Um Spot seu foi restringido pela moderação. Abra o app para saber como solicitar a reativação."
+        informacoes.soundName = "default"
+        informacoes.shouldBadge = true
+        informacoes.shouldSendContentAvailable = true
+        informacoes.desiredKeys = [
+            CampoCloudKit.SpotRestrito.spotID,
+            CampoCloudKit.SpotRestrito.nomeSpot
+        ]
+        assinatura.notificationInfo = informacoes
+
+        do {
+            _ = try await configuracao
+                .banco(para: .spotRestrito)
+                .save(assinatura)
+        } catch {
+            throw ErroCloudKit.converter(error)
+        }
+    }
 }

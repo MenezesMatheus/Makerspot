@@ -13,6 +13,7 @@ enum ErroCRUD: LocalizedError {
     case contaCloudKitDivergente
     case usuarioBanido
     case somenteProprietario
+    case spotRestrito
     case spotProprioNaoPodeSerSalvo
     case spotProprioNaoPodeSerDenunciado
     case conteudoFotoNaoPermitido
@@ -30,6 +31,8 @@ enum ErroCRUD: LocalizedError {
             return "Esta conta foi impedida de usar o MakerSpot. Se você acredita que isso é um erro, entre em contato pelo e-mail \(Notificacoes.emailSuporte)."
         case .somenteProprietario:
             return "Somente o proprietário pode alterar este Spot."
+        case .spotRestrito:
+            return "Este Spot foi restringido pela moderação. Para solicitar a reativação, entre em contato pelo e-mail \(Notificacoes.emailSuporte)."
         case .spotProprioNaoPodeSerSalvo:
             return "Você não pode salvar um Spot criado por você."
         case .spotProprioNaoPodeSerDenunciado:

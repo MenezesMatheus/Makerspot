@@ -34,6 +34,7 @@ final class SpotCRUD {
     private let localizacao: ServicoLocalizacao
     private let autorizacao: AutorizacaoCRUD
     private let notificacoes: Notificacoes
+    private let restricoes: SpotsRestritosCRUD
 
     init(
         cliente: ClienteCloudKit = ClienteCloudKit(),
@@ -46,6 +47,7 @@ final class SpotCRUD {
         self.localizacao = localizacao
         self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
+        self.restricoes = SpotsRestritosCRUD(cliente: cliente)
     }
 
     func criar(_ dados: DadosSpot, id: UUID = UUID()) async throws -> Spot {
@@ -183,6 +185,9 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
+        if try await restricoes.estaRestrito(id) {
+            throw ErroCRUD.spotRestrito
+        }
 
         let dados = try ValidadorSpotCRUD.validarENormalizar(dados)
         let coordenadas: Coordenadas
@@ -229,6 +234,9 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
+        if estaAtivo, try await restricoes.estaRestrito(id) {
+            throw ErroCRUD.spotRestrito
+        }
         guard spot.estaAtivo != estaAtivo else { return spot }
 
         spot.estaAtivo = estaAtivo
@@ -257,6 +265,9 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
+        if try await restricoes.estaRestrito(id) {
+            throw ErroCRUD.spotRestrito
+        }
         do {
             try await cliente.excluir(registro.recordID, tipo: .spot)
         } catch ErroCloudKit.registroNaoEncontrado {

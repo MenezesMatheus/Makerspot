@@ -24,13 +24,14 @@ enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
     case analiseDenuncia = "AnaliseDenuncia"
     case banimentoUsuario = "BanimentoUsuario"
     case notificacaoModeracao = "NotificacaoModeracao"
+    case spotRestrito = "SpotRestrito"
 
     var escopo: EscopoBancoCloudKit {
         switch self {
         case .usuario, .fotoPerfil, .spotSalvo:
             return .privado
         case .spot, .fotoSpot, .denuncia, .analiseDenuncia, .banimentoUsuario,
-             .notificacaoModeracao:
+             .notificacaoModeracao, .spotRestrito:
             return .publico
         }
     }
@@ -124,6 +125,13 @@ enum CampoCloudKit {
         static let nomeConteudo = "nomeConteudo"
         static let motivo = "motivo"
     }
+
+    enum SpotRestrito {
+        static let spotID = "spotID"
+        static let proprietarioID = "proprietarioID"
+        static let nomeSpot = "nomeSpot"
+        static let status = "status"
+    }
 }
 
 enum VersaoEsquemaCloudKit {
@@ -153,6 +161,7 @@ enum IdentificadorCloudKit {
     private static let prefixoBaseAssinaturaSpot = "alteracoes_spot_"
     private static let prefixoAssinaturaSpot = "\(prefixoBaseAssinaturaSpot)v1_"
     private static let prefixoAssinaturaModeracao = "moderacao_usuario_v1_"
+    private static let prefixoAssinaturaSpotRestrito = "spot_restrito_usuario_v1_"
 
     private static func texto(_ id: UUID) -> String {
         id.uuidString.lowercased()
@@ -202,6 +211,16 @@ enum IdentificadorCloudKit {
 
     static func assinaturaModeracao(_ usuarioID: UUID) -> CKSubscription.ID {
         "\(prefixoAssinaturaModeracao)\(texto(usuarioID))"
+    }
+
+    static func assinaturaSpotRestrito(_ usuarioID: UUID) -> CKSubscription.ID {
+        "\(prefixoAssinaturaSpotRestrito)\(texto(usuarioID))"
+    }
+
+    static func usuarioDaAssinaturaSpotRestrito(
+        _ identificador: CKSubscription.ID
+    ) -> UUID? {
+        uuid(de: identificador, removendo: prefixoAssinaturaSpotRestrito)
     }
 
     static func usuarioDaAssinaturaModeracao(
