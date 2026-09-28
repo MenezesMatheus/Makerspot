@@ -6,17 +6,21 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 @MainActor
 @Observable
 final class BuscaViewModel {
+    @ObservationIgnored private var alteracoes: AlteracoesSpots?
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     let fotosSpots: FotosSpotsViewModel
     var texto = ""
     private(set) var tipoSelecionado: TipoSpot?
     private(set) var spotsCarregados: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
+    private(set) var estaCompletandoBusca = false
     private(set) var estaSincronizandoSalvos = false
     private(set) var spotsEmAlteracao: Set<UUID> = []
     private(set) var podeCarregarMais = true
@@ -29,7 +33,7 @@ final class BuscaViewModel {
     private let tamanhoDaPagina: Int
     @ObservationIgnored private var cursor: CursorPaginaSpots?
     @ObservationIgnored private var identificadoresCarregados: Set<UUID> = []
-    @ObservationIgnored private var carregouPrimeiraPagina = false
+    private(set) var carregouPrimeiraPagina = false
 
     var resultados: [Spot] {
         let termo = normalizar(texto)
@@ -78,6 +82,7 @@ final class BuscaViewModel {
             usuarioAtualID: { [weak sessao] in sessao?.usuarioAtual?.id },
             tamanhoDaPagina: tamanhoDaPagina
         )
+        observarAlteracoes(sessao.alteracoesSpots)
     }
 
     func carregarPrimeiraPagina() async {
@@ -97,12 +102,45 @@ final class BuscaViewModel {
         await carregarPrimeiraPagina()
     }
 
+    func completarResultadosDaBusca() async {
+        guard !normalizar(texto).isEmpty else { return }
+
+        estaCompletandoBusca = true
+        defer { estaCompletandoBusca = false }
+
+        do {
+            try await Task.sleep(for: .milliseconds(300))
+        } catch {
+            return
+        }
+
+        while !Task.isCancelled, podeCarregarMais {
+            while estaCarregando, !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(50))
+                } catch {
+                    return
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+            await carregarProximaPagina()
+
+            if mensagemDeErro != nil {
+                return
+            }
+        }
+    }
+
     func carregarProximaPagina() async {
         guard !estaCarregando, podeCarregarMais else { return }
 
         estaCarregando = true
         mensagemDeErro = nil
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         do {
             let quantidadeAntes = spotsCarregados.count
@@ -172,20 +210,36 @@ final class BuscaViewModel {
         mensagemDeErro = nil
         defer { spotsEmAlteracao.remove(spot.id) }
 
+        let estavaSalvo = identificadoresSalvos.contains(spot.id)
+        if estavaSalvo {
+            identificadoresSalvos.remove(spot.id)
+        } else {
+            identificadoresSalvos.insert(spot.id)
+        }
+
         do {
-            if identificadoresSalvos.contains(spot.id) {
+            if estavaSalvo {
                 try await salvosCRUD.dessalvar(spotID: spot.id)
-                identificadoresSalvos.remove(spot.id)
             } else {
                 _ = try await salvosCRUD.salvar(spotID: spot.id)
-                identificadoresSalvos.insert(spot.id)
             }
         } catch ErroCloudKit.operacaoCancelada {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             return
         } catch is CancellationError {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             return
         } catch {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             mensagemDeErro = error.localizedDescription
+        }
+    }
+
+    private func restaurarEstadoSalvo(_ estavaSalvo: Bool, spotID: UUID) {
+        if estavaSalvo {
+            identificadoresSalvos.insert(spotID)
+        } else {
+            identificadoresSalvos.remove(spotID)
         }
     }
 
@@ -193,10 +247,29 @@ final class BuscaViewModel {
         mensagemDeErro = nil
     }
 
-    private func sincronizarSalvos() async {
+    private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
+        self.alteracoes = alteracoes
+        observacaoAlteracoes = alteracoes.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
+    }
+
+    private func aplicarAlteracoes() {
+        guard let alteracoes else { return }
+        spotsCarregados = alteracoes.consolidar(spotsCarregados) { $0.estaAtivo && (tipoSelecionado == nil || $0.tipo == tipoSelecionado) }
+        let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
+        identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
+            .subtracting(spotsEmAlteracao).union(pendentesSalvos)
+    }
+
+    func sincronizarSalvos() async {
         guard !estaSincronizandoSalvos else { return }
         estaSincronizandoSalvos = true
-        defer { estaSincronizandoSalvos = false }
+        defer {
+            estaSincronizandoSalvos = false
+            aplicarAlteracoes()
+        }
 
         do {
             identificadoresSalvos = Set(

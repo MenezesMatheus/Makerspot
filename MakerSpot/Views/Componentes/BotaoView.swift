@@ -7,6 +7,24 @@
 
 import SwiftUI
 
+struct BotaoAdicionarToolbar: View {
+    let titulo: String
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(titulo)
+    }
+}
+
 struct BotaoView: View {
     let nome: String
     private let acao: () -> Void

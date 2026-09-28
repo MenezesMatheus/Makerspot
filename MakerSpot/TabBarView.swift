@@ -8,15 +8,22 @@
 import SwiftUI
 
 struct TabBarView: View {
+    @State private var mostraExclusao = false
     @State private var spotsViewModel: SpotsViewModel
     @State private var perfilViewModel: PerfilViewModel
+    @State private var buscaViewModel: BuscaViewModel 
+    private let sessao: SessaoUsuario
 
     init(sessao: SessaoUsuario) {
+        self.sessao = sessao
         _spotsViewModel = State(initialValue: SpotsViewModel(sessao: sessao))
         _perfilViewModel = State(initialValue: PerfilViewModel(sessao: sessao))
+        _buscaViewModel = State(initialValue: BuscaViewModel(sessao: sessao))
     }
 
     var body: some View {
+        
+        
         TabView {
             Tab("Spots", image: "SFspoticone") {
                 SpotsView(viewModel: spotsViewModel)
@@ -31,8 +38,18 @@ struct TabBarView: View {
             }
 
             Tab(role: .search) {
-                BuscaView()
+                BuscaView(viewModel: buscaViewModel)
             }
+        }
+        .disabled(mostraExclusao)
+        .overlay {
+            PopUpTextoView(
+                estaApresentado: $mostraExclusao,
+                titulo: "Spot excluído com sucesso!"
+            )
+        }
+        .onChange(of: sessao.alteracoesSpots.exclusaoConfirmada) { _, id in
+            if id != nil { mostraExclusao = true }
         }
     }
 }

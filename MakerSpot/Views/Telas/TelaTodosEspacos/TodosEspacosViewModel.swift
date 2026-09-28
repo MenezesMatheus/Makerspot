@@ -6,11 +6,14 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 @MainActor
 @Observable
 final class TodosEspacosViewModel {
+    @ObservationIgnored private var alteracoes: AlteracoesSpots?
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     private(set) var cadastro: CadastrarSpotViewModel?
     let fotosSpots: FotosSpotsViewModel
     private(set) var espacos: [Spot] = []
@@ -28,7 +31,7 @@ final class TodosEspacosViewModel {
     private let tamanhoDaPagina: Int
     @ObservationIgnored private var cursor: CursorPaginaSpots?
     @ObservationIgnored private var identificadoresCarregados: Set<UUID> = []
-    @ObservationIgnored private var carregouPrimeiraPagina = false
+    private(set) var carregouPrimeiraPagina = false
     @ObservationIgnored private var criarCadastro: (() -> CadastrarSpotViewModel)?
 
     init(
@@ -56,6 +59,7 @@ final class TodosEspacosViewModel {
             usuarioAtualID: { [weak sessao] in sessao?.usuarioAtual?.id },
             tamanhoDaPagina: tamanhoDaPagina
         )
+        observarAlteracoes(sessao.alteracoesSpots)
         criarCadastro = {
             let cadastro = CadastrarSpotViewModel(sessao: sessao)
             cadastro.tipoSelecionado = .espaco
@@ -100,7 +104,10 @@ final class TodosEspacosViewModel {
 
         estaCarregando = true
         mensagemDeErro = nil
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         do {
             let quantidadeAntes = espacos.count
@@ -168,20 +175,36 @@ final class TodosEspacosViewModel {
         mensagemDeErro = nil
         defer { spotsEmAlteracao.remove(spot.id) }
 
+        let estavaSalvo = identificadoresSalvos.contains(spot.id)
+        if estavaSalvo {
+            identificadoresSalvos.remove(spot.id)
+        } else {
+            identificadoresSalvos.insert(spot.id)
+        }
+
         do {
-            if identificadoresSalvos.contains(spot.id) {
+            if estavaSalvo {
                 try await salvosCRUD.dessalvar(spotID: spot.id)
-                identificadoresSalvos.remove(spot.id)
             } else {
                 _ = try await salvosCRUD.salvar(spotID: spot.id)
-                identificadoresSalvos.insert(spot.id)
             }
         } catch ErroCloudKit.operacaoCancelada {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             return
         } catch is CancellationError {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             return
         } catch {
+            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             mensagemDeErro = error.localizedDescription
+        }
+    }
+
+    private func restaurarEstadoSalvo(_ estavaSalvo: Bool, spotID: UUID) {
+        if estavaSalvo {
+            identificadoresSalvos.insert(spotID)
+        } else {
+            identificadoresSalvos.remove(spotID)
         }
     }
 
@@ -189,10 +212,29 @@ final class TodosEspacosViewModel {
         mensagemDeErro = nil
     }
 
+    private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
+        self.alteracoes = alteracoes
+        observacaoAlteracoes = alteracoes.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
+    }
+
+    private func aplicarAlteracoes() {
+        guard let alteracoes else { return }
+        espacos = alteracoes.consolidar(espacos) { $0.estaAtivo && $0.tipo == .espaco }
+        let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
+        identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
+            .subtracting(spotsEmAlteracao).union(pendentesSalvos)
+    }
+
     private func sincronizarSalvos() async {
         guard !estaSincronizandoSalvos else { return }
         estaSincronizandoSalvos = true
-        defer { estaSincronizandoSalvos = false }
+        defer {
+            estaSincronizandoSalvos = false
+            aplicarAlteracoes()
+        }
 
         do {
             identificadoresSalvos = Set(

@@ -12,6 +12,7 @@ struct EditarSpotView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: EditarSpotViewModel
     @State private var itensSelecionados: [PhotosPickerItem] = []
+    @State private var horarioSelecionado: HorarioFuncionamentoCadastro?
     @FocusState private var campoFocado: Bool
 
     private let aoAtualizar: (Spot) -> Void
@@ -73,6 +74,11 @@ struct EditarSpotView: View {
             .accessibilityHidden(viewModel.mostraPopup)
             .overlay { camadaPopups }
             .interactiveDismissDisabled(viewModel.estaOcupado)
+            .sheet(item: $horarioSelecionado) { horario in
+                SelecaoDiasEditarSpot(dias: diasDoHorario(id: horario.id))
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .alert("Não foi possível concluir", isPresented: erroApresentado) {
                 Button("OK", role: .cancel, action: viewModel.limparErro)
             } message: {
@@ -146,6 +152,18 @@ struct EditarSpotView: View {
         )
     }
 
+    private func diasDoHorario(id: UUID) -> Binding<Set<DiaSemana>> {
+        Binding(
+            get: { viewModel.horariosFuncionamento.first { $0.id == id }?.dias ?? [] },
+            set: { novosDias in
+                guard let indice = viewModel.horariosFuncionamento.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                viewModel.horariosFuncionamento[indice].dias = novosDias
+            }
+        )
+    }
+
     private func concluirEdicao(_ valorAnterior: Bool, _ deveFechar: Bool) {
         guard deveFechar else { return }
 
@@ -174,7 +192,9 @@ struct EditarSpotView: View {
             if viewModel.tipo == .evento {
                 secaoHorarioEvento
             } else {
-                FuncionamentoEditarSpotView(viewModel: viewModel)
+                FuncionamentoEditarSpotView(viewModel: viewModel) { horario in
+                    horarioSelecionado = horario
+                }
             }
 
             secaoTelefone
@@ -496,6 +516,7 @@ struct EditarSpotView: View {
 
 private struct FuncionamentoEditarSpotView: View {
     @Bindable var viewModel: EditarSpotViewModel
+    let aoSelecionarDias: (HorarioFuncionamentoCadastro) -> Void
 
     var body: some View {
         if viewModel.horariosFuncionamento.isEmpty {
@@ -509,6 +530,7 @@ private struct FuncionamentoEditarSpotView: View {
                 SecaoHorarioEditarSpot(
                     horario: $horario,
                     fusoHorario: viewModel.fusoHorario,
+                    aoSelecionarDias: { aoSelecionarDias(horario) },
                     aoRemover: { viewModel.removerHorario(id: horario.id) }
                 )
             }
@@ -535,12 +557,12 @@ private struct FuncionamentoEditarSpotView: View {
 private struct SecaoHorarioEditarSpot: View {
     @Binding var horario: HorarioFuncionamentoCadastro
     let fusoHorario: TimeZone
+    let aoSelecionarDias: () -> Void
     let aoRemover: () -> Void
-    @State private var mostraDias = false
 
     var body: some View {
         Section {
-            Button { mostraDias = true } label: {
+            Button(action: aoSelecionarDias) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
                         Text("Dias de funcionamento").foregroundStyle(Color.primary)
@@ -569,11 +591,6 @@ private struct SecaoHorarioEditarSpot: View {
         }
         .datePickerStyle(.compact)
         .environment(\.timeZone, fusoHorario)
-        .sheet(isPresented: $mostraDias) {
-            SelecaoDiasEditarSpot(dias: $horario.dias)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
     }
 
     private var resumoDias: some View {

@@ -202,9 +202,17 @@ struct DetalhesSpotView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                    Text(spot.nomePublicador)
-                        .font(.body)
-                        .fontWeight(.medium)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(spot.nomePublicador)
+                            .font(.body)
+                            .fontWeight(.medium)
+
+                        if viewModel.ehProprietario {
+                            Text("Publicado por você")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(corDestaque)
+                        }
+                    }
 
                     Spacer()
                 }
@@ -263,24 +271,17 @@ struct DetalhesSpotView: View {
                     Button {
                         Task { await viewModel.alternarSalvo() }
                     } label: {
-                        if viewModel.estaAlterandoSalvo {
-                            ProgressView()
-                        } else {
-                            Label(
-                                viewModel.estaSalvo
-                                    ? "Remover dos salvos"
-                                    : "Salvar Spot",
-                                systemImage: viewModel.estaSalvo
-                                    ? "bookmark.fill"
-                                    : "bookmark"
-                            )
-                        }
+                        Label(
+                            viewModel.estaSalvo
+                                ? "Remover dos salvos"
+                                : "Salvar Spot",
+                            systemImage: viewModel.estaSalvo
+                                ? "bookmark.fill"
+                                : "bookmark"
+                        )
                     }
                     .labelStyle(.iconOnly)
-                    .disabled(
-                        viewModel.estaAlterandoSalvo
-                            || !viewModel.carregouEstadoSalvo
-                    )
+                    .disabled(!viewModel.carregouEstadoSalvo)
                 }
             }
         }

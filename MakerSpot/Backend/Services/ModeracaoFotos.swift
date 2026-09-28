@@ -11,7 +11,7 @@ import SensitiveContentAnalysis
 enum ResultadoTriagemFoto: Equatable, Sendable {
     case bloqueadaPorConteudoSensivel
     case conteudoSensivelNaoDetectado
-    case analiseLocalIndisponivel
+    case analiseNaoHabilitadaNoSistema
 }
 
 enum ErroModeracaoFotos: LocalizedError {
@@ -37,7 +37,10 @@ final class ModeracaoFotos {
         }
 
         guard analisador.analysisPolicy != .disabled else {
-            return .analiseLocalIndisponivel
+            // `disabled` significa que o recurso opcional "Aviso de Conteúdo
+            // Sensível" não está habilitado nos Ajustes do dispositivo. Isso
+            // não é uma reprovação da imagem e não deve bloquear o cadastro.
+            return .analiseNaoHabilitadaNoSistema
         }
 
         do {

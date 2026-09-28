@@ -43,16 +43,11 @@ struct TodosEventosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Adicionar evento", systemImage: "plus") {
+                BotaoAdicionarToolbar(titulo: "Adicionar evento") {
                     viewModel.iniciarCadastro()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.extraLarge)
-                .tint(.accentColor)
-                .accessibilityLabel("Adicionar evento")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .navigationDestination(isPresented: Binding(
             get: { viewModel.cadastro != nil },
@@ -63,7 +58,7 @@ struct TodosEventosView: View {
             }
         }
         .task {
-            guard viewModel.eventos.isEmpty else { return }
+            guard !viewModel.carregouPrimeiraPagina else { return }
             await viewModel.carregarPrimeiraPagina()
         }
         .alert(
@@ -149,7 +144,7 @@ struct TodosEventosView: View {
                     ),
                     aoSelecionar: {}
                 )
-                .task {
+                .task(id: spot.fotoIDs) {
                     await viewModel.fotosSpots.carregarFotoPrincipal(do: spot)
                 }
                 .onAppear {

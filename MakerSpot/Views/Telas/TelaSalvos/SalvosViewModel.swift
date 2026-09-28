@@ -6,11 +6,14 @@
 //
 
 import Foundation
+import Combine
 import Observation
 
 @MainActor
 @Observable
 final class SalvosViewModel {
+    @ObservationIgnored private var alteracoes: AlteracoesSpots?
+    @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     let fotosSpots: FotosSpotsViewModel
     private(set) var itens: [ItemSpotSalvo] = []
     private(set) var estaCarregando = false
@@ -37,14 +40,21 @@ final class SalvosViewModel {
             notificacoes: Notificacoes(),
             fotosSpots: FotosSpotsViewModel(sessao: sessao)
         )
+        alteracoes = sessao.alteracoesSpots
+        observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
+            self?.aplicarAlteracoes()
+        }
+        aplicarAlteracoes()
     }
 
     func carregar() async {
         guard !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
-        fotosSpots.limpar()
-        defer { estaCarregando = false }
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
 
         do {
             itens = try await crud.listarComSpots()
@@ -61,18 +71,23 @@ final class SalvosViewModel {
     }
 
     func dessalvar(spotID: UUID) async {
-        guard spotEmAlteracao == nil else { return }
+        guard spotEmAlteracao == nil,
+              let indice = itens.firstIndex(where: { $0.spot.id == spotID }) else {
+            return
+        }
+        let itemRemovido = itens.remove(at: indice)
         spotEmAlteracao = spotID
         mensagemDeErro = nil
         defer { spotEmAlteracao = nil }
 
         do {
             try await crud.dessalvar(spotID: spotID)
-            itens.removeAll { $0.spot.id == spotID }
             fotosSpots.removerSpot(spotID)
         } catch is CancellationError {
+            itens.insert(itemRemovido, at: min(indice, itens.count))
             return
         } catch {
+            itens.insert(itemRemovido, at: min(indice, itens.count))
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -121,5 +136,11 @@ final class SalvosViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    private func aplicarAlteracoes() {
+        guard let alteracoes else { return }
+        itens = alteracoes.consolidarItensSalvos(itens)
+            .filter { $0.spot.id != spotEmAlteracao }
     }
 }

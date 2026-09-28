@@ -23,15 +23,35 @@ struct MakerSpotApp: App {
 private struct FluxoPrincipalView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var sessao = SessaoUsuario()
-    @State private var etapa: Etapa = .restaurando
+    @State private var etapa: Etapa
     @State private var roteador = RoteadorNotificacoes.compartilhado
+    @AppStorage("shouldShowOnBoarding")
+    private var shouldShowOnBoarding = true
     private let coordenadorNotificacoes = CoordenadorNotificacoes()
+
+    init() {
+        let deveMostrarOnboarding =
+            UserDefaults.standard.object(forKey: "shouldShowOnBoarding") == nil ||
+            UserDefaults.standard.bool(forKey: "shouldShowOnBoarding")
+
+        _etapa = State(
+            initialValue: deveMostrarOnboarding
+                ? .onboarding
+                : .restaurando
+        )
+    }
 
     var body: some View {
         @Bindable var roteador = roteador
 
         Group {
             switch etapa {
+            case .onboarding:
+                ONboardingview {
+                    shouldShowOnBoarding = false
+                    etapa = .restaurando
+                }
+
             case .restaurando:
                 ZStack {
                     Color(.systemBackground)
@@ -41,7 +61,7 @@ private struct FluxoPrincipalView: View {
 
             case .login:
                 LoginView(sessao: sessao) {
-                    etapa = .criandoPerfil
+                    continuarAposAutenticacao()
                 }
 
             case .criandoPerfil:
@@ -55,32 +75,33 @@ private struct FluxoPrincipalView: View {
                 TabBarView(sessao: sessao)
             }
         }
-        .task {
+        .task(id: etapa) {
             guard etapa == .restaurando else { return }
             let login = LoginViewModel(sessao: sessao)
-            guard await login.restaurarSessao(),
-                  let usuario = sessao.usuarioAtual else {
+            guard await login.restaurarSessao() else {
                 etapa = .login
                 return
             }
 
-            etapa = usuario.atualizadoEm <= usuario.criadoEm
-                ? .criandoPerfil
-                : .principal
+            continuarAposAutenticacao()
         }
         .task(id: etapa) {
             guard etapa == .principal else { return }
             await coordenadorNotificacoes.configurar(sessao: sessao)
         }
         .onChange(of: sessao.estaAutenticado) { _, estaAutenticado in
-            if !estaAutenticado, etapa == .principal {
+            if !estaAutenticado, etapa == .principal || etapa == .criandoPerfil {
                 etapa = .login
             }
         }
         .onChange(of: scenePhase) { _, novaFase in
-            guard novaFase == .active, etapa == .principal else { return }
+            guard novaFase == .active,
+                  etapa == .principal || etapa == .criandoPerfil else { return }
             Task {
-                await coordenadorNotificacoes.configurar(sessao: sessao)
+                try? await UsuarioCRUD(sessao: sessao).verificarBanimentoDaSessaoAtual()
+                if etapa == .principal, sessao.estaAutenticado {
+                    await coordenadorNotificacoes.configurar(sessao: sessao)
+                }
             }
         }
         .alert(item: $roteador.alertaModeracao) { alerta in
@@ -96,12 +117,22 @@ private struct FluxoPrincipalView: View {
         .environment(sessao)
     }
 
+    private func continuarAposAutenticacao() {
+        guard let usuario = sessao.usuarioAtual else {
+            etapa = .login
+            return
+        }
+
+        etapa = usuario.precisaCompletarPerfil ? .criandoPerfil : .principal
+    }
+
     private func voltarAoLogin() {
         try? sessao.encerrar()
         etapa = .login
     }
 
     private enum Etapa: Equatable {
+        case onboarding
         case restaurando
         case login
         case criandoPerfil
