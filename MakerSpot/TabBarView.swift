@@ -10,6 +10,7 @@ import SwiftUI
 struct TabBarView: View {
     @State private var mostraExclusao = false
     @State private var spotsViewModel: SpotsViewModel
+    @State private var salvosViewModel: SalvosViewModel
     @State private var perfilViewModel: PerfilViewModel
     @State private var buscaViewModel: BuscaViewModel 
     private let sessao: SessaoUsuario
@@ -17,6 +18,7 @@ struct TabBarView: View {
     init(sessao: SessaoUsuario) {
         self.sessao = sessao
         _spotsViewModel = State(initialValue: SpotsViewModel(sessao: sessao))
+        _salvosViewModel = State(initialValue: SalvosViewModel(sessao: sessao))
         _perfilViewModel = State(initialValue: PerfilViewModel(sessao: sessao))
         _buscaViewModel = State(initialValue: BuscaViewModel(sessao: sessao))
     }
@@ -30,7 +32,7 @@ struct TabBarView: View {
             }
 
             Tab("Salvos", systemImage: "bookmark") {
-                SalvosView()
+                SalvosView(viewModel: salvosViewModel)
             }
 
             Tab("Perfil", systemImage: "person.fill") {
