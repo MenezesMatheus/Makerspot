@@ -24,6 +24,7 @@ final class PerfilViewModel {
     private(set) var estaExcluindoConta = false
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
+    private(set) var avisoAtivacao: AvisoAtivacaoSpot?
 
     private let usuarioCRUD: UsuarioCRUD
     private let fotoCRUD: FotoCRUD
@@ -123,7 +124,6 @@ final class PerfilViewModel {
 
     func definirAtivo(_ estaAtivo: Bool, para spot: Spot) async {
         guard spotEmAlteracao == nil,
-              spot.estaAtivo != estaAtivo,
               eventos.contains(where: { $0.id == spot.id })
                 || espacos.contains(where: { $0.id == spot.id }) else {
             return
@@ -131,7 +131,26 @@ final class PerfilViewModel {
 
         spotEmAlteracao = spot.id
         mensagemDeErro = nil
+        avisoAtivacao = nil
         defer { spotEmAlteracao = nil }
+
+        if estaAtivo && spot.eventoEncerrado() {
+            do {
+                let restrito = try await spotCRUD.estaRestritoPelaModeracao(spot.id)
+                avisoAtivacao = restrito
+                    ? .restrito(nomeSpot: spot.nome)
+                    : .eventoEncerrado
+            } catch ErroCloudKit.operacaoCancelada {
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                mensagemDeErro = error.localizedDescription
+            }
+            return
+        }
+
+        guard spot.estaAtivo != estaAtivo else { return }
 
         var otimista = spot
         otimista.estaAtivo = estaAtivo
@@ -149,6 +168,9 @@ final class PerfilViewModel {
         } catch is CancellationError {
             substituir(spot)
             return
+        } catch ErroCRUD.spotRestrito {
+            substituir(spot)
+            avisoAtivacao = .restrito(nomeSpot: spot.nome)
         } catch {
             substituir(spot)
             mensagemDeErro = error.localizedDescription
@@ -217,6 +239,10 @@ final class PerfilViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func limparAvisoAtivacao() {
+        avisoAtivacao = nil
     }
 
     private func aplicarAlteracoes() {

@@ -6,9 +6,11 @@
 //
 
 import SwiftUI
+import Combine
 
 struct TodosEventosView: View {
     @State private var viewModel: TodosEventosViewModel
+    @State private var jaApareceu = false
 
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: TodosEventosViewModel(sessao: sessao))
@@ -60,6 +62,15 @@ struct TodosEventosView: View {
         .task {
             guard !viewModel.carregouPrimeiraPagina else { return }
             await viewModel.carregarPrimeiraPagina()
+        }
+        .onAppear {
+            viewModel.atualizarDisponibilidade()
+            defer { jaApareceu = true }
+            guard jaApareceu else { return }
+            Task { await viewModel.recarregar() }
+        }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+            viewModel.atualizarDisponibilidade()
         }
         .alert(
             "Não foi possível carregar",

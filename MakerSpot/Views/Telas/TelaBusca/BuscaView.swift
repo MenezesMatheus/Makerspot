@@ -7,9 +7,11 @@
 
 
 import SwiftUI
+import Combine
 
 struct BuscaView: View {
    @Bindable var viewModel: BuscaViewModel
+   @State private var jaApareceu = false
    var aoSelecionarSpot: (Spot) -> Void = { _ in }
 
    var body: some View {
@@ -68,9 +70,14 @@ struct BuscaView: View {
            .task(id: viewModel.texto) {
                await viewModel.completarResultadosDaBusca()
            }
+           .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+               viewModel.atualizarDisponibilidade()
+           }
            .onAppear {
-               guard !viewModel.spotsCarregados.isEmpty else { return }
-               Task { await viewModel.sincronizarSalvos() }
+               viewModel.atualizarDisponibilidade()
+               defer { jaApareceu = true }
+               guard jaApareceu else { return }
+               Task { await viewModel.recarregar() }
            }
            .alert(
                "Ops",

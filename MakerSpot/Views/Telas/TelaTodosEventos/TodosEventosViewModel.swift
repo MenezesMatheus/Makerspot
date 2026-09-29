@@ -76,7 +76,7 @@ final class TodosEventosViewModel {
         defer { cadastro = nil }
         guard let criado = cadastro?.spotCriado,
               criado.tipo == .evento,
-              criado.estaAtivo else {
+              criado.estaDisponivel() else {
             return
         }
 
@@ -112,8 +112,6 @@ final class TodosEventosViewModel {
 
         do {
             let quantidadeAntes = eventos.count
-            var paginasPercorridas = 0
-
             repeat {
                 let pagina = try await crud.listarAtivos(
                     tipo: .evento,
@@ -127,10 +125,9 @@ final class TodosEventosViewModel {
                 }
                 quantidadeRegistrosIgnorados += pagina.quantidadeRegistrosIgnorados
                 cursor = pagina.proximoCursor
-                paginasPercorridas += 1
             } while eventos.count == quantidadeAntes
                 && cursor != nil
-                && paginasPercorridas < 3
+                && !Task.isCancelled
 
             carregouPrimeiraPagina = true
             podeCarregarMais = cursor != nil
@@ -213,6 +210,11 @@ final class TodosEventosViewModel {
         mensagemDeErro = nil
     }
 
+    func atualizarDisponibilidade() {
+        aplicarAlteracoes()
+        eventos.removeAll { !$0.estaDisponivel() }
+    }
+
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
         self.alteracoes = alteracoes
         observacaoAlteracoes = alteracoes.atualizacoes.sink { [weak self] in
@@ -223,7 +225,9 @@ final class TodosEventosViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
-        eventos = alteracoes.consolidar(eventos) { $0.estaAtivo && $0.tipo == .evento }
+        eventos = alteracoes.consolidar(eventos) {
+            $0.estaDisponivel() && $0.tipo == .evento
+        }
         let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
         identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
             .subtracting(spotsEmAlteracao).union(pendentesSalvos)

@@ -26,6 +26,7 @@ final class BuscaViewModel {
     private(set) var podeCarregarMais = true
     private(set) var mensagemDeErro: String?
     private(set) var quantidadeRegistrosIgnorados = 0
+    private(set) var agora = Date()
 
     private let crud: SpotCRUD
     private let salvosCRUD: SalvosCRUD
@@ -37,9 +38,10 @@ final class BuscaViewModel {
 
     var resultados: [Spot] {
         let termo = normalizar(texto)
-        guard !termo.isEmpty else { return spotsCarregados }
+        let disponiveis = spotsCarregados.filter { $0.estaDisponivel(em: agora) }
+        guard !termo.isEmpty else { return disponiveis }
 
-        return spotsCarregados.filter { spot in
+        return disponiveis.filter { spot in
             let endereco = spot.localizacao.endereco
             let campos = [
                 spot.nome,
@@ -144,8 +146,6 @@ final class BuscaViewModel {
 
         do {
             let quantidadeAntes = spotsCarregados.count
-            var paginasPercorridas = 0
-
             repeat {
                 let pagina = try await crud.listarAtivos(
                     tipo: tipoSelecionado,
@@ -159,10 +159,9 @@ final class BuscaViewModel {
                 }
                 quantidadeRegistrosIgnorados += pagina.quantidadeRegistrosIgnorados
                 cursor = pagina.proximoCursor
-                paginasPercorridas += 1
             } while spotsCarregados.count == quantidadeAntes
                 && cursor != nil
-                && paginasPercorridas < 3
+                && !Task.isCancelled
 
             carregouPrimeiraPagina = true
             podeCarregarMais = cursor != nil
@@ -247,6 +246,11 @@ final class BuscaViewModel {
         mensagemDeErro = nil
     }
 
+    func atualizarDisponibilidade() {
+        agora = Date()
+        aplicarAlteracoes()
+    }
+
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
         self.alteracoes = alteracoes
         observacaoAlteracoes = alteracoes.atualizacoes.sink { [weak self] in
@@ -257,7 +261,9 @@ final class BuscaViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
-        spotsCarregados = alteracoes.consolidar(spotsCarregados) { $0.estaAtivo && (tipoSelecionado == nil || $0.tipo == tipoSelecionado) }
+        spotsCarregados = alteracoes.consolidar(spotsCarregados) {
+            $0.estaDisponivel() && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
+        }
         let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
         identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
             .subtracting(spotsEmAlteracao).union(pendentesSalvos)

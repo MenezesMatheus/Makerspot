@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import Combine
 
 struct PerfilView: View {
     @Environment(SessaoUsuario.self) private var sessao
@@ -17,6 +18,7 @@ struct PerfilView: View {
     @State private var mostrarSeletorFotos = false
     @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
+    @State private var agora = Date()
 
     init(viewModel: PerfilViewModel) {
         self.viewModel = viewModel
@@ -175,6 +177,15 @@ struct PerfilView: View {
                     }
                 )
 
+                PopUpTextoView(
+                    estaApresentado: Binding(
+                        get: { viewModel.avisoAtivacao != nil },
+                        set: { if !$0 { viewModel.limparAvisoAtivacao() } }
+                    ),
+                    titulo: viewModel.avisoAtivacao?.titulo ?? "",
+                    subtitulo: viewModel.avisoAtivacao?.mensagem
+                )
+
                 if viewModel.estaExcluindoConta {
                     Color.black.opacity(0.3)
                         .ignoresSafeArea()
@@ -198,6 +209,12 @@ struct PerfilView: View {
             }
             .task {
                 await viewModel.carregar()
+            }
+            .onAppear {
+                agora = Date()
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                agora = Date()
             }
             .refreshable {
                 await viewModel.carregar()
@@ -274,8 +291,9 @@ struct PerfilView: View {
                         imagem: imagem(do: spot)
                     ),
                     modo: .proprietario(
-                        estaAtivo: spot.estaAtivo,
+                        estaAtivo: spot.estaDisponivel(em: agora),
                         estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        podeAlterar: !spot.eventoEncerrado(em: agora),
                         aoAlternar: { estaAtivo in
                             Task {
                                 await viewModel.definirAtivo(

@@ -41,6 +41,11 @@ final class SalvosCRUD {
             tipo: .spot
         )
         let spot = try ApoioCRUD.spotValido(de: registroSpot)
+        guard spot.estaDisponivel() else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Este Spot não está disponível para salvar."
+            )
+        }
         guard !autorizacao.foiCriadoPeloUsuarioAtual(
             registroSpot,
             spot: spot,

@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SpotsView: View {
     @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: SpotsViewModel
+    @State private var jaApareceu = false
 
     init(viewModel: SpotsViewModel) {
         self.viewModel = viewModel
@@ -51,6 +53,15 @@ struct SpotsView: View {
             .task {
                 guard !viewModel.carregouPrimeiraPagina else { return }
                 await viewModel.carregarPrimeiraPagina()
+            }
+            .onAppear {
+                viewModel.atualizarDisponibilidade()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.recarregar() }
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                viewModel.atualizarDisponibilidade()
             }
             .alert(
                 "Não foi possível carregar os Spots",

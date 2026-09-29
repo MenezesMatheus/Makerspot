@@ -206,13 +206,22 @@ struct DetalhesSpotView: View {
                 // MARK: - Publicador
 
                 HStack(spacing: 12) {
-                    Circle()
-                        .fill(.quaternary)
-                        .frame(width: 44, height: 44)
-                        .overlay {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(.secondary)
+                    Group {
+                        if let foto = viewModel.fotoPublicador,
+                           let imagem = UIImage(contentsOfFile: foto.arquivoURL.path) {
+                            Image(uiImage: imagem)
+                                .resizable()
+                                .scaledToFill()
+                        } else if !viewModel.fotoPublicadorCarregada {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(.quaternary, in: Circle())
+                        } else {
+                            imagemPadraoPublicador
                         }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(spot.nomePublicador)
@@ -230,6 +239,9 @@ struct DetalhesSpotView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
+                .task(id: spot.proprietarioID) {
+                    await viewModel.carregarFotoPublicador()
+                }
 
                 // MARK: - Divisor
 
@@ -251,6 +263,15 @@ struct DetalhesSpotView: View {
                 }
             }
         }
+    }
+
+    private var imagemPadraoPublicador: some View {
+        Circle()
+            .fill(.quaternary)
+            .overlay {
+                Image(systemName: "person.fill")
+                    .foregroundStyle(.secondary)
+            }
     }
 
     @ToolbarContentBuilder

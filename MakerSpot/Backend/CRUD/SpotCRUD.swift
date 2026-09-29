@@ -137,11 +137,13 @@ final class SpotCRUD {
             )
         }
         try ApoioCRUD.exigirSemFalhas(pagina.falhas)
-        let spots = pagina.registros.compactMap { try? ApoioCRUD.spotValido(de: $0) }
+        let agora = Date()
+        let spotsValidos = pagina.registros.compactMap { try? ApoioCRUD.spotValido(de: $0) }
+        let spots = spotsValidos.filter { $0.estaDisponivel(em: agora) }
         return PaginaSpots(
             spots: spots,
             proximoCursor: pagina.proximoCursor.map { CursorPaginaSpots(valor: $0) },
-            quantidadeRegistrosIgnorados: pagina.registros.count - spots.count
+            quantidadeRegistrosIgnorados: pagina.registros.count - spotsValidos.count
         )
     }
 
@@ -242,6 +244,11 @@ final class SpotCRUD {
                 descricao: "Adicione ao menos uma foto antes de publicar o Spot."
             )
         }
+        if estaAtivo, spot.eventoEncerrado() {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Atualize a data do evento antes de reativá-lo."
+            )
+        }
         guard spot.estaAtivo != estaAtivo else { return spot }
 
         spot.estaAtivo = estaAtivo
@@ -256,6 +263,11 @@ final class SpotCRUD {
         atualizarLembretesEmSegundoPlano(para: atualizado)
         alteracoes.atualizar(atualizado)
         return atualizado
+    }
+
+    func estaRestritoPelaModeracao(_ id: UUID) async throws -> Bool {
+        _ = try await autorizacao.contextoAtual()
+        return try await restricoes.estaRestrito(id)
     }
 
     func excluir(id: UUID) async throws {

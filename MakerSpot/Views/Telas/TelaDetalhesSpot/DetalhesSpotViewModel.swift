@@ -15,6 +15,8 @@ final class DetalhesSpotViewModel {
     @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     private(set) var spot: Spot?
     private(set) var fotos: [FotoDisponivel] = []
+    private(set) var fotoPublicador: FotoDisponivel?
+    private(set) var fotoPublicadorCarregada = false
     private(set) var estaSalvo = false
     private(set) var estaCarregando = false
     private(set) var estaAlterandoSalvo = false
@@ -57,6 +59,8 @@ final class DetalhesSpotViewModel {
         self.spot = spotInicial ?? sessao.alteracoesSpots.spots[spotID]
         if let spot = self.spot {
             self.fotos = sessao.fotosEmCache(para: spot) ?? []
+            self.fotoPublicador = sessao.fotoPublicadorEmCache(spot.proprietarioID)
+            self.fotoPublicadorCarregada = self.fotoPublicador != nil
         }
         observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
             self?.aplicarAlteracoes()
@@ -147,6 +151,16 @@ final class DetalhesSpotViewModel {
             mensagemDeErro = error.localizedDescription
         }
         estadoNotificacoes = await notificacoes.verificarPermissao()
+    }
+
+    func carregarFotoPublicador() async {
+        guard let spot else {
+            fotoPublicador = nil
+            fotoPublicadorCarregada = true
+            return
+        }
+        fotoPublicador = await sessao.carregarFotoPublicador(spot.proprietarioID)
+        fotoPublicadorCarregada = true
     }
 
     func alternarSalvo() async {

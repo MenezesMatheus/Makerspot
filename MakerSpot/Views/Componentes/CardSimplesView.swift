@@ -52,6 +52,7 @@ enum CardSimplesModo {
     case proprietario(
         estaAtivo: Bool,
         estaProcessando: Bool,
+        podeAlterar: Bool,
         aoAlternar: (Bool) -> Void
     )
 }
@@ -188,6 +189,11 @@ struct CardSimplesView: View {
                 .padding(14)
         }
         .accessibilityElement(children: .contain)
+        .task(id: dados.spot?.proprietarioID) {
+            guard dados.tipo == .evento,
+                  let usuarioID = dados.spot?.proprietarioID else { return }
+            _ = await sessao.carregarFotoPublicador(usuarioID)
+        }
     }
 
     private var conteudo: some View {
@@ -288,6 +294,7 @@ struct CardSimplesView: View {
         case let .proprietario(
             estaAtivo,
             estaProcessando,
+            podeAlterar,
             aoAlternar
         ):
             Toggle(
@@ -302,8 +309,10 @@ struct CardSimplesView: View {
             )
             .labelsHidden()
             .tint(dados.tipo.corDestaque)
+            .disabled(estaProcessando)
             .accessibilityLabel("Oferta ativa")
             .accessibilityValue(estaAtivo ? "Ativada" : "Desativada")
+            .accessibilityHint(podeAlterar ? "" : "Edite a data do evento para anunciá-lo novamente")
             .frame(minWidth: 52, minHeight: 44)
         }
     }
@@ -438,6 +447,7 @@ private struct InfoCardSimples: View {
             modo: .proprietario(
                 estaAtivo: true,
                 estaProcessando: false,
+                podeAlterar: true,
                 aoAlternar: { _ in }
             ),
             aoSelecionar: { print("Abrir detalhes") }
@@ -460,6 +470,7 @@ private struct InfoCardSimples: View {
             modo: .proprietario(
                 estaAtivo: true,
                 estaProcessando: false,
+                podeAlterar: true,
                 aoAlternar: { _ in }
             ),
             aoSelecionar: { print("Abrir detalhes") }

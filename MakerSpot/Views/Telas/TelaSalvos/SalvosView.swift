@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SalvosView: View {
     @Environment(SessaoUsuario.self) private var sessao
@@ -38,6 +39,12 @@ struct SalvosView: View {
             }
             .task {
                 await viewModel.carregar()
+            }
+            .onAppear {
+                viewModel.atualizarDisponibilidade()
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                viewModel.atualizarDisponibilidade()
             }
             .alert(
                 "Não foi possível carregar os salvos",

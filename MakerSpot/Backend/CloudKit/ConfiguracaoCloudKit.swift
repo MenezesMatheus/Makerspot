@@ -19,6 +19,7 @@ enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
     case spot = "Spot"
     case fotoSpot = "FotoSpot"
     case fotoPerfil = "FotoPerfil"
+    case fotoPerfilPublica = "FotoPerfilPublica"
     case spotSalvo = "SpotSalvo"
     case denuncia = "Denuncia"
     case analiseDenuncia = "AnaliseDenuncia"
@@ -30,7 +31,7 @@ enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
         switch self {
         case .usuario, .fotoPerfil, .spotSalvo:
             return .privado
-        case .spot, .fotoSpot, .denuncia, .analiseDenuncia, .banimentoUsuario,
+        case .spot, .fotoSpot, .fotoPerfilPublica, .denuncia, .analiseDenuncia, .banimentoUsuario,
              .notificacaoModeracao, .spotRestrito:
             return .publico
         }
@@ -89,6 +90,12 @@ enum CampoCloudKit {
         static let arquivo = "arquivo"
         static let spotReferencia = "spotReferencia"
         static let usuarioReferencia = "usuarioReferencia"
+    }
+
+    enum FotoPerfilPublica {
+        static let usuarioID = "usuarioID"
+        static let fotoID = "fotoID"
+        static let arquivo = "arquivo"
     }
 
     enum SpotSalvo {
@@ -177,6 +184,10 @@ enum IdentificadorCloudKit {
 
     static func foto(_ id: UUID) -> CKRecord.ID {
         CKRecord.ID(recordName: "foto_\(texto(id))")
+    }
+
+    static func fotoPerfilPublica(_ usuarioID: UUID) -> CKRecord.ID {
+        CKRecord.ID(recordName: "foto_perfil_publica_\(texto(usuarioID))")
     }
 
     static func spotSalvo(_ salvo: SpotSalvo) -> CKRecord.ID {

@@ -20,13 +20,14 @@ final class SalvosViewModel {
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
     private(set) var estadoNotificacoes: EstadoPermissaoNotificacoes = .naoSolicitada
+    private(set) var agora = Date()
 
     var espacosSalvos: [ItemSpotSalvo] {
-        itens.filter { $0.spot.tipo == .espaco }
+        itens.filter { $0.spot.tipo == .espaco && $0.spot.estaDisponivel(em: agora) }
     }
 
     var eventosSalvos: [ItemSpotSalvo] {
-        itens.filter { $0.spot.tipo == .evento }
+        itens.filter { $0.spot.tipo == .evento && $0.spot.estaDisponivel(em: agora) }
     }
 
     private let crud: SalvosCRUD
@@ -144,6 +145,10 @@ final class SalvosViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func atualizarDisponibilidade() {
+        agora = Date()
     }
 
     private func aplicarAlteracoes() {

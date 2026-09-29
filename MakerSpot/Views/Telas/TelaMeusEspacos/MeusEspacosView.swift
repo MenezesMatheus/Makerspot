@@ -165,6 +165,7 @@ struct MeusEspacosView: View {
                     modo: .proprietario(
                         estaAtivo: spot.estaAtivo,
                         estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        podeAlterar: true,
                         aoAlternar: { novoValor in
                             Task {
                                 await viewModel.definirAtivo(

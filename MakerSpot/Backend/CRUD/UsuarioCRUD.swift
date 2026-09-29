@@ -114,6 +114,7 @@ final class UsuarioCRUD {
         }
 
         try sessao.iniciar(com: usuario)
+        sincronizarFotoPublicaSeNecessario(do: usuario)
         return usuario
     }
 
@@ -154,6 +155,7 @@ final class UsuarioCRUD {
         }
 
         sessao.restaurar(encontrado.usuario)
+        sincronizarFotoPublicaSeNecessario(do: encontrado.usuario)
         return encontrado.usuario
     }
 
@@ -219,6 +221,11 @@ final class UsuarioCRUD {
         try sessao.encerrar()
     }
 
+    private func sincronizarFotoPublicaSeNecessario(do usuario: Usuario) {
+        guard sessao.usuarioAtual?.id == usuario.id else { return }
+        Task { _ = try? await FotoCRUD(sessao: sessao).buscarFotoPerfilAtual() }
+    }
+
     func excluirConta() async throws {
         let contexto = try await autorizacao.contextoAtual()
         let usuarioID = contexto.usuario.id
@@ -263,6 +270,11 @@ final class UsuarioCRUD {
                 tipo: .fotoPerfil
             )
         }
+        // O registro público pode ainda não existir em ambientes sem o novo esquema.
+        try? await excluirSeExistir(
+            IdentificadorCloudKit.fotoPerfilPublica(usuarioID),
+            tipo: .fotoPerfilPublica
+        )
 
         try await excluirSeExistir(
             IdentificadorCloudKit.usuario(contexto.usuario.id),

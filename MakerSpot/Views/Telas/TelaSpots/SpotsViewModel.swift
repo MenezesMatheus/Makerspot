@@ -38,10 +38,8 @@ final class SpotsViewModel {
     private(set) var carregouPrimeiraPagina = false
 
     var eventosEmDestaque: [Spot] {
-        let agora = Date()
         let eventosDisponiveis = spots.filter { spot in
-            guard case .evento(let evento) = spot.detalhes else { return false }
-            return evento.termino >= agora
+            spot.tipo == .evento && spot.estaDisponivel()
         }
 
         return Array(eventosDisponiveis.sorted(by: ordenarEventos).prefix(3))
@@ -90,7 +88,7 @@ final class SpotsViewModel {
     }
 
     func encerrarCadastro() {
-        if let spot = cadastro?.spotCriado, spot.estaAtivo {
+        if let spot = cadastro?.spotCriado, spot.estaDisponivel() {
             let atualizado = alteracoes?.spots[spot.id] ?? spot
             spots.removeAll { $0.id == spot.id }
             spots.insert(atualizado, at: 0)
@@ -135,8 +133,6 @@ final class SpotsViewModel {
 
         do {
             let quantidadeAntes = spots.count
-            var paginasPercorridas = 0
-
             repeat {
                 let pagina = try await crud.listarAtivos(
                     tipo: tipoSelecionado,
@@ -150,10 +146,9 @@ final class SpotsViewModel {
                 }
                 quantidadeRegistrosIgnorados += pagina.quantidadeRegistrosIgnorados
                 cursor = pagina.proximoCursor
-                paginasPercorridas += 1
             } while spots.count == quantidadeAntes
                 && cursor != nil
-                && paginasPercorridas < 3
+                && !Task.isCancelled
 
             carregouPrimeiraPagina = true
             podeCarregarMais = cursor != nil
@@ -237,6 +232,11 @@ final class SpotsViewModel {
         mensagemDeErro = nil
     }
 
+    func atualizarDisponibilidade() {
+        aplicarAlteracoes()
+        spots.removeAll { !$0.estaDisponivel() }
+    }
+
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
         self.alteracoes = alteracoes
         observacaoAlteracoes = alteracoes.atualizacoes.sink { [weak self] in
@@ -247,7 +247,9 @@ final class SpotsViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
-        spots = alteracoes.consolidar(spots) { $0.estaAtivo && (tipoSelecionado == nil || $0.tipo == tipoSelecionado) }
+        spots = alteracoes.consolidar(spots) {
+            $0.estaDisponivel() && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
+        }
         let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
         identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
             .subtracting(spotsEmAlteracao).union(pendentesSalvos)

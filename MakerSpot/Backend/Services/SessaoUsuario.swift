@@ -37,6 +37,9 @@ final class SessaoUsuario {
     let alteracoesSpots = AlteracoesSpots()
     @ObservationIgnored lazy var enviosFotosCadastro = EnviosFotosCadastroSpots(sessao: self)
     @ObservationIgnored private var fotosDetalhesEmCache: [UUID: FotosDetalhesEmCache] = [:]
+    @ObservationIgnored private var fotosPublicadoresEmCache: [UUID: FotoDisponivel] = [:]
+    @ObservationIgnored private var publicadoresSemFotoAte: [UUID: Date] = [:]
+    @ObservationIgnored private var buscasFotosPublicadores: [UUID: Task<FotoDisponivel?, Never>] = [:]
     private(set) var usuarioAtual: Usuario?
     @ObservationIgnored private var nomeContaCloudKitValidado: String?
     @ObservationIgnored private var validacaoCloudKitExpiraEm: Date?
@@ -71,6 +74,9 @@ final class SessaoUsuario {
         try ChaveiroSessao.remover()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
+        fotosPublicadoresEmCache = [:]
+        publicadoresSemFotoAte = [:]
+        buscasFotosPublicadores = [:]
         invalidarValidacaoCloudKit()
         usuarioAtual = nil
         EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
@@ -81,6 +87,9 @@ final class SessaoUsuario {
         try? ChaveiroSessao.remover()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
+        fotosPublicadoresEmCache = [:]
+        publicadoresSemFotoAte = [:]
+        buscasFotosPublicadores = [:]
         invalidarValidacaoCloudKit()
         usuarioAtual = nil
         EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
@@ -139,6 +148,43 @@ final class SessaoUsuario {
         fotosDetalhesEmCache[spotID] = nil
     }
 
+    func fotoPublicadorEmCache(_ usuarioID: UUID) -> FotoDisponivel? {
+        guard let foto = fotosPublicadoresEmCache[usuarioID],
+              FileManager.default.fileExists(atPath: foto.arquivoURL.path),
+              usuarioAtual?.id != usuarioID || usuarioAtual?.fotoID == foto.foto.id else {
+            return nil
+        }
+        return foto
+    }
+
+    func guardarFotoPublicadorEmCache(_ foto: FotoDisponivel?, usuarioID: UUID) {
+        fotosPublicadoresEmCache[usuarioID] = foto
+        publicadoresSemFotoAte[usuarioID] = foto == nil
+            ? Date().addingTimeInterval(60)
+            : nil
+    }
+
+    func carregarFotoPublicador(_ usuarioID: UUID) async -> FotoDisponivel? {
+        if let foto = fotoPublicadorEmCache(usuarioID) { return foto }
+        if let expiracao = publicadoresSemFotoAte[usuarioID], expiracao > Date() {
+            return nil
+        }
+        if let busca = buscasFotosPublicadores[usuarioID] { return await busca.value }
+
+        let busca = Task { [self] () -> FotoDisponivel? in
+            let crud = FotoCRUD(sessao: self)
+            if usuarioAtual?.id == usuarioID {
+                return try? await crud.buscarFotoPerfilAtual()
+            }
+            return try? await crud.buscarFotoPublica(para: usuarioID)
+        }
+        buscasFotosPublicadores[usuarioID] = busca
+        let foto = await busca.value
+        buscasFotosPublicadores[usuarioID] = nil
+        guardarFotoPublicadorEmCache(foto, usuarioID: usuarioID)
+        return foto
+    }
+
     private func invalidarValidacaoCloudKitSeNecessario(para usuario: Usuario) {
         guard usuarioAtual?.id != usuario.id
                 || usuarioAtual?.cloudKitUserRecordName
@@ -148,6 +194,9 @@ final class SessaoUsuario {
         invalidarValidacaoCloudKit()
         alteracoesSpots.limpar()
         fotosDetalhesEmCache = [:]
+        fotosPublicadoresEmCache = [:]
+        publicadoresSemFotoAte = [:]
+        buscasFotosPublicadores = [:]
     }
 
     private func invalidarValidacaoCloudKit() {
