@@ -79,10 +79,11 @@ final class MeusEspacosViewModel {
             return
         }
 
+        let atualizado = alteracoes?.spots[criado.id] ?? criado
         if let indice = espacos.firstIndex(where: { $0.id == criado.id }) {
-            espacos[indice] = criado
+            espacos[indice] = atualizado
         } else {
-            espacos.insert(criado, at: 0)
+            espacos.insert(atualizado, at: 0)
         }
     }
 

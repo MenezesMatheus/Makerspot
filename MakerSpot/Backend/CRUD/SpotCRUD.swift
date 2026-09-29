@@ -70,7 +70,7 @@ final class SpotCRUD {
             redesSociais: dados.redesSociais,
             fotoIDs: [],
             detalhes: dados.detalhes,
-            estaAtivo: false,
+            estaAtivo: true,
             versao: 1,
             criadoEm: agora,
             atualizadoEm: agora
@@ -92,6 +92,7 @@ final class SpotCRUD {
             }
             criado = confirmado
         }
+        atualizarLembretesEmSegundoPlano(para: criado)
         alteracoes.atualizar(criado)
         return criado
     }

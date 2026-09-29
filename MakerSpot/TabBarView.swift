@@ -48,7 +48,7 @@ struct TabBarView: View {
                 BuscaView(viewModel: buscaViewModel)
             }
         }
-        .disabled(mostraExclusao || mostraCadastro)
+        .disabled(mostraExclusao || mostraCadastro || sessao.enviosFotosCadastro.mensagemDeErro != nil)
         .overlay {
             PopUpTextoView(
                 estaApresentado: $mostraExclusao,
@@ -57,7 +57,20 @@ struct TabBarView: View {
             PopUpTextoView(
                 estaApresentado: $mostraCadastro,
                 titulo: tituloCadastro,
+                subtitulo: "As fotos aparecerão assim que o envio terminar.",
                 fecharApos: .seconds(1.5)
+            )
+            PopUpTextoView(
+                estaApresentado: Binding(
+                    get: {
+                        !mostraCadastro && sessao.enviosFotosCadastro.mensagemDeErro != nil
+                    },
+                    set: {
+                        if !$0 { sessao.enviosFotosCadastro.limparErro() }
+                    }
+                ),
+                titulo: "Fotos ainda não enviadas",
+                subtitulo: sessao.enviosFotosCadastro.mensagemDeErro
             )
         }
         .onChange(of: sessao.alteracoesSpots.exclusaoConfirmada) { _, id in

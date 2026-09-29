@@ -91,8 +91,9 @@ final class SpotsViewModel {
 
     func encerrarCadastro() {
         if let spot = cadastro?.spotCriado, spot.estaAtivo {
+            let atualizado = alteracoes?.spots[spot.id] ?? spot
             spots.removeAll { $0.id == spot.id }
-            spots.insert(spot, at: 0)
+            spots.insert(atualizado, at: 0)
             identificadoresCarregados.insert(spot.id)
         }
         cadastro = nil

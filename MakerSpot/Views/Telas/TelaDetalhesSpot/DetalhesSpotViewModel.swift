@@ -44,7 +44,8 @@ final class DetalhesSpotViewModel {
         fotoCRUD: FotoCRUD,
         salvosCRUD: SalvosCRUD,
         localizacao: ServicoLocalizacao,
-        notificacoes: Notificacoes
+        notificacoes: Notificacoes,
+        spotInicial: Spot? = nil
     ) {
         self.spotID = spotID
         self.sessao = sessao
@@ -53,13 +54,17 @@ final class DetalhesSpotViewModel {
         self.salvosCRUD = salvosCRUD
         self.localizacao = localizacao
         self.notificacoes = notificacoes
+        self.spot = spotInicial ?? sessao.alteracoesSpots.spots[spotID]
+        if let spot = self.spot {
+            self.fotos = sessao.fotosEmCache(para: spot) ?? []
+        }
         observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
             self?.aplicarAlteracoes()
         }
         aplicarAlteracoes()
     }
 
-    convenience init(spotID: UUID, sessao: SessaoUsuario) {
+    convenience init(spotID: UUID, sessao: SessaoUsuario, spotInicial: Spot? = nil) {
         self.init(
             spotID: spotID,
             sessao: sessao,
@@ -67,7 +72,8 @@ final class DetalhesSpotViewModel {
             fotoCRUD: FotoCRUD(sessao: sessao),
             salvosCRUD: SalvosCRUD(sessao: sessao),
             localizacao: ServicoLocalizacao(),
-            notificacoes: Notificacoes()
+            notificacoes: Notificacoes(),
+            spotInicial: spotInicial
         )
     }
 
@@ -82,7 +88,10 @@ final class DetalhesSpotViewModel {
 
         carregouEstadoSalvo = false
         do {
-            spot = try await spotCRUD.buscar(id: spotID)
+            let remoto = try await spotCRUD.buscar(id: spotID)
+            if remoto.versao >= (spot?.versao ?? 0) {
+                spot = remoto
+            }
         } catch ErroCloudKit.registroNaoEncontrado {
             spot = nil
             fotos = []
@@ -118,7 +127,17 @@ final class DetalhesSpotViewModel {
         }
 
         do {
-            fotos = try await fotoCRUD.buscarFotos(para: spot)
+            if let guardadas = sessao.fotosEmCache(para: spot) {
+                if self.spot?.fotoIDs == spot.fotoIDs {
+                    fotos = guardadas
+                }
+            } else {
+                let carregadas = try await fotoCRUD.buscarFotos(para: spot)
+                if self.spot?.fotoIDs == spot.fotoIDs {
+                    fotos = carregadas
+                    sessao.guardarFotosEmCache(carregadas, para: spot)
+                }
+            }
         } catch ErroCloudKit.operacaoCancelada {
             return
         } catch is CancellationError {
@@ -175,6 +194,7 @@ final class DetalhesSpotViewModel {
             try await spotCRUD.excluir(id: spotID)
             spot = nil
             fotos = []
+            sessao.removerFotosEmCache(do: spotID)
             return true
         } catch ErroCloudKit.operacaoCancelada {
             return false
@@ -281,7 +301,6 @@ final class DetalhesSpotViewModel {
         let fotosMudaram = spot?.fotoIDs != spotAtualizado.fotoIDs
         spot = spotAtualizado
         guard fotosMudaram else { return }
-        fotos = []
         Task { await carregarFotosAtualizadas() }
     }
 
@@ -291,6 +310,7 @@ final class DetalhesSpotViewModel {
             let carregadas = try await fotoCRUD.buscarFotos(para: spot)
             guard self.spot?.fotoIDs == spot.fotoIDs else { return }
             fotos = carregadas
+            sessao.guardarFotosEmCache(carregadas, para: spot)
         } catch is CancellationError {
             return
         } catch {

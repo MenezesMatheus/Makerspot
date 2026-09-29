@@ -20,6 +20,43 @@ struct ResultadoEnvioFotoSpot: Equatable, Sendable {
     let spotAtualizado: Spot
 }
 
+struct FotoEnvioCadastroSpot: Sendable {
+    let id: UUID
+    let arquivoURL: URL
+    let criadaEm: Date
+}
+
+enum ImagemOpacaJPEG {
+    static func converter(_ imagem: CGImage) throws -> CGImage {
+        guard let espacoDeCores = CGColorSpace(name: CGColorSpace.sRGB),
+              let contexto = CGContext(
+                data: nil,
+                width: imagem.width,
+                height: imagem.height,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: espacoDeCores,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Não foi possível preparar a imagem selecionada."
+            )
+        }
+
+        let area = CGRect(x: 0, y: 0, width: imagem.width, height: imagem.height)
+        contexto.setFillColor(CGColor(gray: 1, alpha: 1))
+        contexto.fill(area)
+        contexto.interpolationQuality = .high
+        contexto.draw(imagem, in: area)
+        guard let resultado = contexto.makeImage() else {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Não foi possível preparar a imagem selecionada."
+            )
+        }
+        return resultado
+    }
+}
+
 final class FotoCRUD {
     private static let limiteBytesOriginais = 30 * 1_024 * 1_024
     private static let limiteBytesPreparados = 10 * 1_024 * 1_024
@@ -48,13 +85,10 @@ final class FotoCRUD {
     func enviarParaSpot(
         arquivoURL: URL,
         spotID: UUID,
-        textoAlternativo: String? = nil
+        textoAlternativo: String? = nil,
+        fotoID: UUID = UUID(),
+        criadaEm: Date = Date()
     ) async throws -> ResultadoEnvioFotoSpot {
-        let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
-        defer { try? gerenciadorArquivos.removeItem(at: arquivoPreparado) }
-
-        try await validarSegurancaDaFoto(arquivoPreparado)
-
         let contexto = try await autorizacao.contextoAtual()
         let registroSpot = try await cliente.buscar(
             IdentificadorCloudKit.spot(spotID),
@@ -71,12 +105,19 @@ final class FotoCRUD {
         }
 
         let foto = Foto(
-            id: UUID(),
+            id: fotoID,
             enviadaPorID: contexto.usuario.id,
             destino: .spot(spot.id),
             textoAlternativo: ApoioCRUD.textoOpcional(textoAlternativo),
-            criadaEm: Date()
+            criadaEm: criadaEm
         )
+        if spot.fotoIDs.contains(fotoID) {
+            return ResultadoEnvioFotoSpot(foto: foto, spotAtualizado: spot)
+        }
+        let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
+        defer { try? gerenciadorArquivos.removeItem(at: arquivoPreparado) }
+        try await validarSegurancaDaFoto(arquivoPreparado)
+
         let registroFoto = try ConversorRegistroCloudKit.registro(
             de: foto,
             arquivoURL: arquivoPreparado
@@ -114,6 +155,104 @@ final class FotoCRUD {
             foto: foto,
             spotAtualizado: spotAtualizado
         )
+    }
+
+    /// Envia todos os assets antes de publicar seus IDs no Spot. Assim o card
+    /// e os detalhes só observam uma atualização quando o lote inteiro terminou.
+    func enviarLoteDoCadastro(
+        _ arquivos: [FotoEnvioCadastroSpot],
+        spotID: UUID
+    ) async throws -> Spot {
+        guard !arquivos.isEmpty,
+              Set(arquivos.map(\.id)).count == arquivos.count else {
+            throw ErroCRUD.dadosInvalidos(descricao: "Selecione fotos válidas para o Spot.")
+        }
+
+        let contexto = try await autorizacao.contextoAtual()
+        let registroInicial = try await cliente.buscar(
+            IdentificadorCloudKit.spot(spotID),
+            tipo: .spot
+        )
+        let spotInicial = try ConversorRegistroCloudKit.spot(de: registroInicial)
+        try autorizacao.validarProprietario(
+            do: registroInicial,
+            spot: spotInicial,
+            contexto: contexto
+        )
+        guard Set(spotInicial.fotoIDs).count == spotInicial.fotoIDs.count else {
+            throw ErroCRUD.respostaInconsistente
+        }
+
+        let fotosAindaNaoVinculadas = arquivos.filter {
+            !spotInicial.fotoIDs.contains($0.id)
+        }
+        guard !fotosAindaNaoVinculadas.isEmpty else {
+            sessao.alteracoesSpots.atualizar(spotInicial)
+            return spotInicial
+        }
+
+        for arquivo in fotosAindaNaoVinculadas {
+            try Task.checkCancellation()
+            let preparado = try prepararImagemParaEnvio(arquivo.arquivoURL)
+            do {
+                try await validarSegurancaDaFoto(preparado)
+                let foto = Foto(
+                    id: arquivo.id,
+                    enviadaPorID: contexto.usuario.id,
+                    destino: .spot(spotID),
+                    textoAlternativo: nil,
+                    criadaEm: arquivo.criadaEm
+                )
+                let registro = try ConversorRegistroCloudKit.registro(
+                    de: foto,
+                    arquivoURL: preparado
+                )
+                try await salvarFotoSeNecessario(registro, foto: foto)
+                try? gerenciadorArquivos.removeItem(at: preparado)
+            } catch {
+                try? gerenciadorArquivos.removeItem(at: preparado)
+                throw error
+            }
+        }
+
+        let idsDoLote = arquivos.map(\.id)
+        for tentativa in 0..<3 {
+            let registro = tentativa == 0 ? registroInicial : try await cliente.buscar(
+                IdentificadorCloudKit.spot(spotID),
+                tipo: .spot
+            )
+            var spot = try ConversorRegistroCloudKit.spot(de: registro)
+            try autorizacao.validarProprietario(do: registro, spot: spot, contexto: contexto)
+            let faltantes = idsDoLote.filter { !spot.fotoIDs.contains($0) }
+            guard !faltantes.isEmpty else {
+                sessao.alteracoesSpots.atualizar(spot)
+                return spot
+            }
+
+            spot.fotoIDs.append(contentsOf: faltantes)
+            try ApoioCRUD.registrarAlteracao(&spot)
+            let alterado = try ConversorRegistroCloudKit.registro(de: spot, existente: registro)
+            do {
+                let atualizado = try ConversorRegistroCloudKit.spot(
+                    de: try await cliente.salvar(alterado)
+                )
+                sessao.alteracoesSpots.atualizar(atualizado)
+                return atualizado
+            } catch ErroCloudKit.conflito where tentativa < 2 {
+                continue
+            } catch {
+                if let remoto = try? await cliente.buscar(
+                    IdentificadorCloudKit.spot(spotID),
+                    tipo: .spot
+                ), let confirmado = try? ConversorRegistroCloudKit.spot(de: remoto),
+                   idsDoLote.allSatisfy({ confirmado.fotoIDs.contains($0) }) {
+                    sessao.alteracoesSpots.atualizar(confirmado)
+                    return confirmado
+                }
+                throw error
+            }
+        }
+        throw ErroCRUD.respostaInconsistente
     }
 
     func buscarFotoPrincipal(para spot: Spot) async throws -> FotoDisponivel? {
@@ -419,7 +558,7 @@ final class FotoCRUD {
                 descricao: "Não foi possível preparar a imagem selecionada."
             )
         }
-        let imagem = try imagemOpaca(miniatura)
+        let imagem = try ImagemOpacaJPEG.converter(miniatura)
 
         let diretorio = gerenciadorArquivos.temporaryDirectory
             .appendingPathComponent("UploadsMakerSpot", isDirectory: true)
@@ -464,38 +603,6 @@ final class FotoCRUD {
             )
         }
         return destino
-    }
-
-    /// O destino JPEG não suporta transparência. Redesenhar em um contexto
-    /// opaco evita preservar um canal alfa inútil, reduz o arquivo e elimina
-    /// o custo extra de memória apontado pelo ImageIO.
-    private func imagemOpaca(_ imagem: CGImage) throws -> CGImage {
-        guard let espacoDeCores = CGColorSpace(name: CGColorSpace.sRGB),
-              let contexto = CGContext(
-                data: nil,
-                width: imagem.width,
-                height: imagem.height,
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: espacoDeCores,
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-              ) else {
-            throw ErroCRUD.dadosInvalidos(
-                descricao: "Não foi possível preparar a imagem selecionada."
-            )
-        }
-
-        contexto.interpolationQuality = .high
-        contexto.draw(
-            imagem,
-            in: CGRect(x: 0, y: 0, width: imagem.width, height: imagem.height)
-        )
-        guard let resultado = contexto.makeImage() else {
-            throw ErroCRUD.dadosInvalidos(
-                descricao: "Não foi possível preparar a imagem selecionada."
-            )
-        }
-        return resultado
     }
 
     private func copiarParaCache(_ origem: URL, fotoID: UUID) throws -> URL {

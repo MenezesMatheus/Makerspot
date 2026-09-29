@@ -142,16 +142,6 @@ struct CadastrarSpotView: View {
                     .accessibilityElement(children: .combine)
                 }
                 .listRowBackground(Color.clear)
-            } else if let spotCriado = viewModel.spotCriado, !spotCriado.estaAtivo {
-                Section {
-                    Text(viewModel.temFotosPendentes
-                        ? "\(viewModel.nomeTipoCapitalizado) salvo como rascunho. Confirme para concluir o envio das fotos."
-                        : "Fotos enviadas. Confirme para publicar o \(viewModel.nomeTipo)."
-                    )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .listRowBackground(Color.clear)
             }
         }
         .formStyle(.grouped)
@@ -309,7 +299,7 @@ struct CadastrarSpotView: View {
                         ForEach(viewModel.fotos) { foto in
                             miniatura(foto)
                         }
-                        if viewModel.spotCriado == nil {
+                        if !viewModel.deveFechar {
                             seletorFotos(compacto: true)
                                 .frame(width: 120, height: 140)
                                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
@@ -365,7 +355,7 @@ struct CadastrarSpotView: View {
                     .frame(width: 180, height: 140)
                     .clipped()
             }
-            if !viewModel.fotoFoiEnviada(foto) {
+            if !viewModel.deveFechar {
                 Button(role: .destructive) { viewModel.removerFoto(foto) } label: {
                     Image(systemName: "xmark")
                 }

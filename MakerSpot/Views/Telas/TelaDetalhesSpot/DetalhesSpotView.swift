@@ -14,13 +14,21 @@ struct DetalhesSpotView: View {
     @State private var confirmarExclusao = false
     @State private var iniciouCarregamento = false
     private let sessao: SessaoUsuario
+    private let imagemInicialURL: URL?
 
-    init(spotID: UUID, sessao: SessaoUsuario) {
+    init(
+        spotID: UUID,
+        sessao: SessaoUsuario,
+        spotInicial: Spot? = nil,
+        imagemInicialURL: URL? = nil
+    ) {
         self.sessao = sessao
+        self.imagemInicialURL = imagemInicialURL
         _viewModel = State(
             initialValue: DetalhesSpotViewModel(
                 spotID: spotID,
-                sessao: sessao
+                sessao: sessao,
+                spotInicial: spotInicial
             )
         )
     }
@@ -132,7 +140,11 @@ struct DetalhesSpotView: View {
 
                 CarrosselFotosSpot(
                     fotos: viewModel.fotos,
+                    fotoProvisoriaURL: imagemInicialURL,
                     estaCarregando: viewModel.estaCarregando
+                        && viewModel.fotos.isEmpty
+                        && imagemInicialURL == nil
+                        && !spot.fotoIDs.isEmpty
                 )
                 .padding(.bottom, 24)
 

@@ -80,10 +80,11 @@ final class TodosEventosViewModel {
             return
         }
 
+        let atualizado = alteracoes?.spots[criado.id] ?? criado
         if let indice = eventos.firstIndex(where: { $0.id == criado.id }) {
-            eventos[indice] = criado
+            eventos[indice] = atualizado
         } else {
-            eventos.insert(criado, at: 0)
+            eventos.insert(atualizado, at: 0)
             identificadoresCarregados.insert(criado.id)
         }
     }

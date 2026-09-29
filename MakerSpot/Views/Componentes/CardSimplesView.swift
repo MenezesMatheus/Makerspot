@@ -12,6 +12,11 @@ enum ImagemCardSimples {
     case asset(String)
     case arquivo(URL)
     case placeholder
+
+    var arquivoURL: URL? {
+        if case .arquivo(let url) = self { return url }
+        return nil
+    }
 }
 
 private extension TipoSpot {
@@ -53,6 +58,7 @@ enum CardSimplesModo {
 
 struct CardSimplesDados: Identifiable {
     let id: UUID
+    let spot: Spot?
     let tipo: TipoSpot
     let titulo: String
     let imagem: ImagemCardSimples
@@ -68,6 +74,7 @@ struct CardSimplesDados: Identifiable {
         localCidade: String
     ) {
         self.id = id
+        self.spot = nil
         self.tipo = tipo
         self.titulo = titulo
         self.imagem = imagem
@@ -81,6 +88,7 @@ struct CardSimplesDados: Identifiable {
         agora: Date = Date()
     ) {
         self.id = spot.id
+        self.spot = spot
         self.tipo = spot.tipo
         self.titulo = spot.nome
         self.imagem = imagem
@@ -162,7 +170,12 @@ struct CardSimplesView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             NavigationLink {
-                DetalhesSpotView(spotID: dados.id, sessao: sessao)
+                DetalhesSpotView(
+                    spotID: dados.id,
+                    sessao: sessao,
+                    spotInicial: dados.spot,
+                    imagemInicialURL: dados.imagem.arquivoURL
+                )
             } label: {
                 conteudo
             }

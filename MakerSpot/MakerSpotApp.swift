@@ -111,6 +111,7 @@ private struct FluxoPrincipalView: View {
             }
             if etapa == .principal {
                 Task { await coordenadorNotificacoes.configurar(sessao: sessao) }
+                sessao.enviosFotosCadastro.retomarPendentes()
             }
         }
         .onChange(of: roteador.atualizacaoRestricaoSpot) { _, _ in

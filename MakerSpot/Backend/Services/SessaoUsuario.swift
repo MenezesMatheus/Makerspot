@@ -29,7 +29,14 @@ enum ErroSessaoUsuario: LocalizedError {
 @MainActor
 @Observable
 final class SessaoUsuario {
+    private struct FotosDetalhesEmCache {
+        let ids: [UUID]
+        let fotos: [FotoDisponivel]
+    }
+
     let alteracoesSpots = AlteracoesSpots()
+    @ObservationIgnored lazy var enviosFotosCadastro = EnviosFotosCadastroSpots(sessao: self)
+    @ObservationIgnored private var fotosDetalhesEmCache: [UUID: FotosDetalhesEmCache] = [:]
     private(set) var usuarioAtual: Usuario?
     @ObservationIgnored private var nomeContaCloudKitValidado: String?
     @ObservationIgnored private var validacaoCloudKitExpiraEm: Date?
@@ -46,12 +53,14 @@ final class SessaoUsuario {
         invalidarValidacaoCloudKitSeNecessario(para: usuario)
         usuarioAtual = usuario
         EstadoSpotsSalvosNotificacoes.compartilhado.ativar(usuarioID: usuario.id)
+        enviosFotosCadastro.retomarPendentes()
     }
 
     func restaurar(_ usuario: Usuario) {
         invalidarValidacaoCloudKitSeNecessario(para: usuario)
         usuarioAtual = usuario
         EstadoSpotsSalvosNotificacoes.compartilhado.ativar(usuarioID: usuario.id)
+        enviosFotosCadastro.retomarPendentes()
     }
 
     func identificadorAppleSalvo() throws -> String? {
@@ -60,6 +69,8 @@ final class SessaoUsuario {
 
     func encerrar() throws {
         try ChaveiroSessao.remover()
+        enviosFotosCadastro.interromper()
+        fotosDetalhesEmCache = [:]
         invalidarValidacaoCloudKit()
         usuarioAtual = nil
         EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
@@ -68,6 +79,8 @@ final class SessaoUsuario {
 
     func bloquear() {
         try? ChaveiroSessao.remover()
+        enviosFotosCadastro.interromper()
+        fotosDetalhesEmCache = [:]
         invalidarValidacaoCloudKit()
         usuarioAtual = nil
         EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
@@ -108,6 +121,24 @@ final class SessaoUsuario {
         }
     }
 
+    func fotosEmCache(para spot: Spot) -> [FotoDisponivel]? {
+        guard let entrada = fotosDetalhesEmCache[spot.id],
+              entrada.ids == spot.fotoIDs,
+              entrada.fotos.allSatisfy({ FileManager.default.fileExists(atPath: $0.arquivoURL.path) }) else {
+            return nil
+        }
+        return entrada.fotos
+    }
+
+    func guardarFotosEmCache(_ fotos: [FotoDisponivel], para spot: Spot) {
+        guard fotos.map(\.foto.id) == spot.fotoIDs else { return }
+        fotosDetalhesEmCache[spot.id] = FotosDetalhesEmCache(ids: spot.fotoIDs, fotos: fotos)
+    }
+
+    func removerFotosEmCache(do spotID: UUID) {
+        fotosDetalhesEmCache[spotID] = nil
+    }
+
     private func invalidarValidacaoCloudKitSeNecessario(para usuario: Usuario) {
         guard usuarioAtual?.id != usuario.id
                 || usuarioAtual?.cloudKitUserRecordName
@@ -116,6 +147,7 @@ final class SessaoUsuario {
         }
         invalidarValidacaoCloudKit()
         alteracoesSpots.limpar()
+        fotosDetalhesEmCache = [:]
     }
 
     private func invalidarValidacaoCloudKit() {

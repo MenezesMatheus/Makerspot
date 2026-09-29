@@ -69,7 +69,8 @@ struct FotoImportadaCadastro {
             ) else {
                 throw ErroCRUD.dadosInvalidos(descricao: "Selecione uma imagem válida.")
             }
-            CGImageDestinationAddImage(destino, imagem, nil)
+            let imagemSemAlfa = try ImagemOpacaJPEG.converter(imagem)
+            CGImageDestinationAddImage(destino, imagemSemAlfa, nil)
             guard CGImageDestinationFinalize(destino) else {
                 throw ErroCRUD.dadosInvalidos(
                     descricao: "Não foi possível preparar a foto."
@@ -197,7 +198,6 @@ final class CadastrarSpotViewModel {
 
     private(set) var fotos: [FotoCadastroSpot] = []
     private(set) var spotCriado: Spot?
-    private(set) var quantidadeFotosProcessadas = 0
     private(set) var estaCadastrando = false
     private(set) var estaImportandoFotos = false
     private(set) var mensagemDeErro: String?
@@ -216,13 +216,7 @@ final class CadastrarSpotViewModel {
     var deveFechar: Bool { etapa == .concluido }
     var mostraPopup: Bool { mostraConfirmacao || mensagemDeErro != nil }
     var bloqueiaInteracao: Bool { estaOcupado || mostraPopup || deveFechar }
-    var temFotosPendentes: Bool {
-        spotCriado != nil && fotos.contains { !fotoFoiEnviada($0) }
-    }
-
     var nomeTipo: String { tipoSelecionado == .evento ? "evento" : "espaço" }
-    var nomeTipoCapitalizado: String { tipoSelecionado == .evento ? "Evento" : "Espaço" }
-
     var tituloPendente: Bool { mostrarPendencias && textoAusente(titulo) }
     var enderecoPendente: Bool { mostrarPendencias && !mostraEndereco }
     var ruaPendente: Bool { mostrarPendencias && textoAusente(endereco.logradouro) }
@@ -263,20 +257,13 @@ final class CadastrarSpotViewModel {
     }
 
     var tituloConfirmacao: String {
-        if spotCriado != nil {
-            return temFotosPendentes
-                ? "Deseja concluir o envio das fotos do \(nomeTipo)?"
-                : "Deseja publicar o \(nomeTipo) \(titulo)?"
-        }
         let nome = titulo.trimmingCharacters(in: .whitespacesAndNewlines)
         return "Deseja cadastrar o \(nomeTipo) \(nome)?"
     }
 
     @ObservationIgnored private let criarSpot: (DadosSpot, UUID) async throws -> Spot
-    @ObservationIgnored private let enviarFoto: (URL, UUID) async throws -> Spot
-    @ObservationIgnored private let publicarSpot: (UUID) async throws -> Spot
+    @ObservationIgnored private let registrarFotos: (Spot, [FotoCadastroSpot]) throws -> Void
     @ObservationIgnored private var aoConcluirCadastro: ((Spot) -> Void)?
-    @ObservationIgnored private var arquivosEnviados: Set<URL> = []
     @ObservationIgnored private var dadosEnviados: DadosSpot?
     @ObservationIgnored private var dadosDaTentativa: DadosSpot?
     @ObservationIgnored private var idDaTentativa: UUID?
@@ -286,47 +273,36 @@ final class CadastrarSpotViewModel {
         agora: Date = Date(),
         fusoHorario: TimeZone = .current,
         criarSpot: @escaping (DadosSpot, UUID) async throws -> Spot,
-        enviarFoto: @escaping (URL, UUID) async throws -> Spot,
-        publicarSpot: @escaping (UUID) async throws -> Spot
+        registrarFotos: @escaping (Spot, [FotoCadastroSpot]) throws -> Void
     ) {
         self.telefoneSugerido = ApoioCRUD.textoOpcional(telefoneSugerido)
         self.inicio = agora
         self.termino = agora.addingTimeInterval(3_600)
         self.fusoHorario = fusoHorario
         self.criarSpot = criarSpot
-        self.enviarFoto = enviarFoto
-        self.publicarSpot = publicarSpot
-    }
-
-    convenience init(
-        spotCRUD: SpotCRUD,
-        fotoCRUD: FotoCRUD,
-        telefoneSugerido: String? = nil
-    ) {
-        self.init(
-            telefoneSugerido: telefoneSugerido,
-            criarSpot: { dados, id in try await spotCRUD.criar(dados, id: id) },
-            enviarFoto: { arquivo, id in
-                try await fotoCRUD.enviarParaSpot(arquivoURL: arquivo, spotID: id).spotAtualizado
-            },
-            publicarSpot: { id in try await spotCRUD.definirAtivo(true, para: id) }
-        )
+        self.registrarFotos = registrarFotos
     }
 
     convenience init(sessao: SessaoUsuario) {
+        let spotCRUD = SpotCRUD(sessao: sessao)
         self.init(
-            spotCRUD: SpotCRUD(sessao: sessao),
-            fotoCRUD: FotoCRUD(sessao: sessao),
-            telefoneSugerido: sessao.usuarioAtual?.telefonePadrao
+            telefoneSugerido: sessao.usuarioAtual?.telefonePadrao,
+            criarSpot: { dados, id in try await spotCRUD.criar(dados, id: id) },
+            registrarFotos: { spot, fotos in
+                try sessao.enviosFotosCadastro.registrar(spot: spot, fotos: fotos)
+            }
         )
-        aoConcluirCadastro = { sessao.alteracoesSpots.confirmarCadastro($0) }
+        aoConcluirCadastro = { [weak sessao] spot in
+            sessao?.alteracoesSpots.confirmarCadastro(spot)
+            sessao?.enviosFotosCadastro.retomarPendentes()
+        }
     }
 
     var estaOcupado: Bool { estaCadastrando || estaImportandoFotos }
 
     var textoProgresso: String {
         if estaImportandoFotos { return "Preparando fotos…" }
-        return "Salvando \(nomeTipo)… \(quantidadeFotosProcessadas)/\(fotos.count) fotos"
+        return "Salvando \(nomeTipo)…"
     }
 
     var podeCadastrar: Bool {
@@ -427,19 +403,15 @@ final class CadastrarSpotViewModel {
     }
 
     private func iniciarImportacao() -> Bool {
-        guard !estaOcupado, spotCriado == nil else { return false }
+        guard !estaOcupado, !deveFechar else { return false }
         estaImportandoFotos = true
         return true
     }
 
     func adicionarFoto(_ foto: FotoCadastroSpot) { fotos.append(foto) }
 
-    func fotoFoiEnviada(_ foto: FotoCadastroSpot) -> Bool {
-        arquivosEnviados.contains(foto.arquivoURL)
-    }
-
     func removerFoto(_ foto: FotoCadastroSpot) {
-        guard !estaOcupado, !fotoFoiEnviada(foto) else { return }
+        guard !estaOcupado, !deveFechar else { return }
         apagarArquivos(da: foto)
         fotos.removeAll { $0.id == foto.id }
     }
@@ -476,16 +448,16 @@ final class CadastrarSpotViewModel {
         guard !estaOcupado, !deveFechar else { return nil }
         do {
             let dados = try dadosEnviados ?? dadosDoFormulario()
-            return await cadastrar(dados: dados, fotos: fotos.map(\.arquivoURL))
+            return await cadastrar(dados: dados, fotos: fotos)
         } catch {
             mensagemDeErro = error.localizedDescription
             return nil
         }
     }
 
-    // Guarda o Spot e os uploads concluídos para retomar falhas parciais sem duplicá-los.
+    // Só aguarda os dados do Spot; o envio das fotos continua após sair do formulário.
     @discardableResult
-    func cadastrar(dados: DadosSpot, fotos: [URL] = []) async -> Spot? {
+    func cadastrar(dados: DadosSpot, fotos: [FotoCadastroSpot] = []) async -> Spot? {
         guard !estaOcupado else { return nil }
         guard !fotos.isEmpty else {
             mostrarPendencias = true
@@ -499,10 +471,10 @@ final class CadastrarSpotViewModel {
         do {
             if let dadosEnviados, dadosEnviados != dados {
                 throw ErroCRUD.dadosInvalidos(
-                    descricao: "Conclua o envio das fotos antes de editar este \(nomeTipo)."
+                    descricao: "Conclua o cadastro antes de editar este \(nomeTipo)."
                 )
             }
-            var spot: Spot
+            let spot: Spot
             if let existente = spotCriado {
                 spot = existente
             } else {
@@ -516,26 +488,14 @@ final class CadastrarSpotViewModel {
                 spotCriado = spot
                 dadosEnviados = dados
             }
-            for arquivo in fotos where !arquivosEnviados.contains(arquivo) {
-                try Task.checkCancellation()
-                spot = try await enviarFoto(arquivo, spot.id)
-                spotCriado = spot
-                arquivosEnviados.insert(arquivo)
-                quantidadeFotosProcessadas = arquivosEnviados.count
-            }
-            if !spot.estaAtivo {
-                spot = try await publicarSpot(spot.id)
-                spotCriado = spot
-            }
+            try registrarFotos(spot, fotos)
             return spot
         } catch {
-            let motivo = error is CancellationError ? "O envio foi interrompido." : error.localizedDescription
+            let motivo = error is CancellationError ? "O cadastro foi interrompido." : error.localizedDescription
             if spotCriado == nil {
                 mensagemDeErro = motivo
-            } else if fotos.contains(where: { !arquivosEnviados.contains($0) }) {
-                mensagemDeErro = "O \(nomeTipo) ficou como rascunho porque ainda há fotos pendentes. \(motivo) Tente novamente ou remova a foto pendente."
             } else {
-                mensagemDeErro = "As fotos foram enviadas, mas o \(nomeTipo) continua como rascunho. \(motivo) Tente novamente para publicar."
+                mensagemDeErro = "O \(nomeTipo) foi salvo, mas não foi possível preparar as fotos. \(motivo) Tente novamente ou adicione fotos depois em Editar Spot."
             }
             return nil
         }

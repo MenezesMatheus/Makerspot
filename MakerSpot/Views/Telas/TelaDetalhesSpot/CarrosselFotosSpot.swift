@@ -4,6 +4,7 @@ import UIKit
 /// Componente de apresentação: o carregamento das fotos pertence ao ViewModel da tela.
 struct CarrosselFotosSpot: View {
     let fotos: [FotoDisponivel]
+    var fotoProvisoriaURL: URL? = nil
     var estaCarregando = false
 
     var body: some View {
@@ -15,6 +16,12 @@ struct CarrosselFotosSpot: View {
                            let imagem = UIImage(
                             contentsOfFile: fotos[indice].arquivoURL.path
                            ) {
+                            Image(uiImage: imagem)
+                                .resizable()
+                                .scaledToFill()
+                        } else if indice == 0,
+                                  let fotoProvisoriaURL,
+                                  let imagem = UIImage(contentsOfFile: fotoProvisoriaURL.path) {
                             Image(uiImage: imagem)
                                 .resizable()
                                 .scaledToFill()
