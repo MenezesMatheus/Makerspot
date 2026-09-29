@@ -17,7 +17,6 @@ final class SalvosViewModel {
     let fotosSpots: FotosSpotsViewModel
     private(set) var itens: [ItemSpotSalvo] = []
     private(set) var estaCarregando = false
-    private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
     private(set) var estadoNotificacoes: EstadoPermissaoNotificacoes = .naoSolicitada
     private(set) var agora = Date()
@@ -66,7 +65,8 @@ final class SalvosViewModel {
         }
 
         do {
-            itens = try await crud.listarComSpots()
+            itens = try crud.listarComSpots()
+            crud.atualizarEmSegundoPlano()
             estadoNotificacoes = await notificacoes.verificarPermissao()
             if estadoNotificacoes == .autorizada
                 || estadoNotificacoes == .provisoria {
@@ -79,31 +79,21 @@ final class SalvosViewModel {
         }
     }
 
-    func dessalvar(spotID: UUID) async {
-        guard spotEmAlteracao == nil,
-              let indice = itens.firstIndex(where: { $0.spot.id == spotID }) else {
-            return
-        }
-        let itemRemovido = itens.remove(at: indice)
-        spotEmAlteracao = spotID
+    func dessalvar(spotID: UUID) {
         mensagemDeErro = nil
-        defer { spotEmAlteracao = nil }
-
         do {
-            try await crud.dessalvar(spotID: spotID)
-            fotosSpots.removerSpot(spotID)
-        } catch is CancellationError {
-            itens.insert(itemRemovido, at: min(indice, itens.count))
-            return
+            try crud.dessalvar(spotID: spotID)
+            itens = try crud.listarComSpots()
         } catch {
-            itens.insert(itemRemovido, at: min(indice, itens.count))
             mensagemDeErro = error.localizedDescription
         }
     }
 
+    var avisoSincronizacao: String? { crud.avisoSincronizacao }
+
     func marcarComoVisualizado(spotID: UUID) async {
         do {
-            let registro = try await crud.marcarComoVisualizado(spotID: spotID)
+            guard let registro = try crud.marcarComoVisualizado(spotID: spotID) else { return }
             guard let indice = itens.firstIndex(where: { $0.spot.id == spotID }) else {
                 return
             }
@@ -153,7 +143,7 @@ final class SalvosViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
+        if let locais = try? crud.listarComSpots() { itens = locais }
         itens = alteracoes.consolidarItensSalvos(itens)
-            .filter { $0.spot.id != spotEmAlteracao }
     }
 }

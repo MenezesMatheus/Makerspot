@@ -51,6 +51,12 @@ final class AlteracoesSpots {
         emissor.send()
     }
 
+    func substituirSalvos(_ itens: [ItemSpotSalvo], removidos: Set<UUID>) {
+        salvos = Dictionary(itens.map { ($0.spot.id, $0) }, uniquingKeysWith: { _, novo in novo })
+        removidosDosSalvos = removidos
+        emissor.send()
+    }
+
     func marcarComoVisualizado(_ salvo: SpotSalvo, spot: Spot) {
         // Uma leitura iniciada antes de dessalvar não pode restaurar o favorito.
         guard !removidosDosSalvos.contains(spot.id) else { return }

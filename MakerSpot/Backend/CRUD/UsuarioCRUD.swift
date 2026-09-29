@@ -276,6 +276,8 @@ final class UsuarioCRUD {
             tipo: .fotoPerfilPublica
         )
 
+        try sessao.salvosLocais.excluirDadosDaConta()
+        try? await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
         try await excluirSeExistir(
             IdentificadorCloudKit.usuario(contexto.usuario.id),
             tipo: .usuario

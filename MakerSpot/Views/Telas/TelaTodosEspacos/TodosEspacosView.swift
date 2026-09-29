@@ -142,10 +142,10 @@ struct TodosEspacosView: View {
                     ),
                     modo: .visitante(
                         estaSalvo: viewModel.estaSalvo(spot),
-                        estaProcessando: viewModel.estaAlterandoSalvo(spot),
+                        estaProcessando: false,
                         podeSalvar: viewModel.podeSalvar(spot),
                         aoAlternar: {
-                            Task { await viewModel.alternarSalvo(do: spot) }
+                            viewModel.alternarSalvo(do: spot)
                         }
                     ),
                     aoSelecionar: {}

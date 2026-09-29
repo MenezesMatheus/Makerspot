@@ -19,7 +19,6 @@ final class DetalhesSpotViewModel {
     private(set) var fotoPublicadorCarregada = false
     private(set) var estaSalvo = false
     private(set) var estaCarregando = false
-    private(set) var estaAlterandoSalvo = false
     private(set) var estaExcluindo = false
     private(set) var carregouEstadoSalvo = false
     private(set) var mensagemDeErro: String?
@@ -62,6 +61,12 @@ final class DetalhesSpotViewModel {
             self.fotoPublicador = sessao.fotoPublicadorEmCache(spot.proprietarioID)
             self.fotoPublicadorCarregada = self.fotoPublicador != nil
         }
+        do {
+            estaSalvo = try salvosCRUD.estaSalvo(spotID: spotID)
+            carregouEstadoSalvo = true
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
         observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
             self?.aplicarAlteracoes()
         }
@@ -82,7 +87,7 @@ final class DetalhesSpotViewModel {
     }
 
     func carregar() async {
-        guard !estaCarregando, !estaAlterandoSalvo, !estaExcluindo else { return }
+        guard !estaCarregando, !estaExcluindo else { return }
         estaCarregando = true
         mensagemDeErro = nil
         defer {
@@ -90,7 +95,6 @@ final class DetalhesSpotViewModel {
             aplicarAlteracoes()
         }
 
-        carregouEstadoSalvo = false
         do {
             let remoto = try await spotCRUD.buscar(id: spotID)
             if remoto.versao >= (spot?.versao ?? 0) {
@@ -113,14 +117,15 @@ final class DetalhesSpotViewModel {
         guard let spot else { return }
         // Falhas de fotos e salvos são independentes: uma não deve impedir a outra.
         do {
+            try salvosCRUD.atualizarSnapshot(spot)
             if ehProprietario {
                 estaSalvo = false
             } else {
-                estaSalvo = try await salvosCRUD.estaSalvo(spotID: spot.id)
+                estaSalvo = try salvosCRUD.estaSalvo(spotID: spot.id)
             }
             carregouEstadoSalvo = true
             if estaSalvo {
-                _ = try await salvosCRUD.marcarComoVisualizado(spotID: spot.id)
+                _ = try salvosCRUD.marcarComoVisualizado(spotID: spot.id)
             }
         } catch ErroCloudKit.operacaoCancelada {
             return
@@ -163,31 +168,12 @@ final class DetalhesSpotViewModel {
         fotoPublicadorCarregada = true
     }
 
-    func alternarSalvo() async {
-        guard let spot, !ehProprietario, carregouEstadoSalvo,
-              !estaCarregando, !estaAlterandoSalvo, !estaExcluindo else { return }
-        estaAlterandoSalvo = true
+    func alternarSalvo() {
+        guard let spot, !ehProprietario, carregouEstadoSalvo, !estaExcluindo else { return }
         mensagemDeErro = nil
-        defer { estaAlterandoSalvo = false }
-
-        let estavaSalvo = estaSalvo
-        estaSalvo.toggle()
-
         do {
-            if estavaSalvo {
-                try await salvosCRUD.dessalvar(spotID: spot.id)
-            } else {
-                _ = try await salvosCRUD.salvar(spotID: spot.id)
-                await prepararNotificacoes()
-            }
-        } catch ErroCloudKit.operacaoCancelada {
-            estaSalvo = estavaSalvo
-            return
-        } catch is CancellationError {
-            estaSalvo = estavaSalvo
-            return
+            estaSalvo = try salvosCRUD.alternar(spot: spot)
         } catch {
-            estaSalvo = estavaSalvo
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -200,7 +186,7 @@ final class DetalhesSpotViewModel {
     @discardableResult
     func excluir() async -> Bool {
         guard spot != nil, ehProprietario, !estaCarregando,
-              !estaAlterandoSalvo, !estaExcluindo else { return false }
+              !estaExcluindo else { return false }
         estaExcluindo = true
         mensagemDeErro = nil
         defer { estaExcluindo = false }
@@ -299,14 +285,9 @@ final class DetalhesSpotViewModel {
            atualizado.versao >= (spot?.versao ?? 0), atualizado != spot {
             receberAtualizacao(atualizado)
         }
-        if !estaAlterandoSalvo {
-            if alteracoes.salvos[spotID] != nil {
-                estaSalvo = true
-                carregouEstadoSalvo = true
-            } else if alteracoes.removidosDosSalvos.contains(spotID) {
-                estaSalvo = false
-                carregouEstadoSalvo = true
-            }
+        if let salvo = try? salvosCRUD.estaSalvo(spotID: spotID) {
+            estaSalvo = salvo
+            carregouEstadoSalvo = true
         }
     }
 

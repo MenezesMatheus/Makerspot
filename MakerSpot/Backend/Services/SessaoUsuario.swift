@@ -44,6 +44,7 @@ final class SessaoUsuario {
     }
 
     let alteracoesSpots = AlteracoesSpots()
+    @ObservationIgnored lazy var salvosLocais = SalvosLocais(sessao: self)
     @ObservationIgnored lazy var enviosFotosCadastro = EnviosFotosCadastroSpots(sessao: self)
     @ObservationIgnored private var fotosDetalhesEmCache: [UUID: FotosDetalhesEmCache] = [:]
     @ObservationIgnored private var capasSpotsEmCache: [UUID: CapaSpotEmCache] = [:]
@@ -85,6 +86,7 @@ final class SessaoUsuario {
 
     func encerrar() throws {
         try ChaveiroSessao.remover()
+        salvosLocais.interromper()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
         capasSpotsEmCache = [:]
@@ -99,6 +101,7 @@ final class SessaoUsuario {
 
     func bloquear() {
         try? ChaveiroSessao.remover()
+        salvosLocais.interromper()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
         capasSpotsEmCache = [:]
@@ -268,6 +271,7 @@ final class SessaoUsuario {
             return
         }
         invalidarValidacaoCloudKit()
+        salvosLocais.interromper()
         alteracoesSpots.limpar()
         fotosDetalhesEmCache = [:]
         capasSpotsEmCache = [:]

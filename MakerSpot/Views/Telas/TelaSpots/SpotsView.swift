@@ -130,10 +130,10 @@ struct SpotsView: View {
                                 spot: evento,
                                 imagem: imagem(do: evento),
                                 estaSalvo: viewModel.estaSalvo(evento),
-                                estaAlterandoSalvo: viewModel.estaAlterandoSalvo(evento),
+                                estaAlterandoSalvo: false,
                                 podeSalvar: viewModel.podeSalvar(evento),
                                 aoAlternarSalvo: {
-                                    Task { await viewModel.alternarSalvo(do: evento) }
+                                    viewModel.alternarSalvo(do: evento)
                                 }
                             )
                             .task(id: evento.fotoIDs) {
@@ -167,10 +167,10 @@ struct SpotsView: View {
                             ),
                             modo: .visitante(
                                 estaSalvo: viewModel.estaSalvo(espaco),
-                                estaProcessando: viewModel.estaAlterandoSalvo(espaco),
+                                estaProcessando: false,
                                 podeSalvar: viewModel.podeSalvar(espaco),
                                 aoAlternar: {
-                                    Task { await viewModel.alternarSalvo(do: espaco) }
+                                    viewModel.alternarSalvo(do: espaco)
                                 }
                             ),
                             aoSelecionar: {}

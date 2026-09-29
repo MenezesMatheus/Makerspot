@@ -35,13 +35,7 @@ final class CoordenadorNotificacoes {
             let autorizada = try await notificacoes.prepararSistema()
             guard autorizada else { return }
 
-            if let salvos = try? await SalvosCRUD(sessao: sessao)
-                .listarComSpots() {
-                try? await notificacoes.sincronizarLembretes(
-                    eventos: salvos.map(\.spot),
-                    papel: .salvo
-                )
-            }
+            sessao.salvosLocais.atualizarEmSegundoPlano()
 
             if let eventosDoUsuario = try? await SpotCRUD(sessao: sessao)
                 .listarDoUsuarioAtual(tipo: .evento) {

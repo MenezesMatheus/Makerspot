@@ -88,6 +88,7 @@ private struct FluxoPrincipalView: View {
         }
         .task(id: etapa) {
             guard etapa == .principal else { return }
+            sessao.salvosLocais.atualizarEmSegundoPlano()
             await verificarRestricoes()
         }
         .task(id: etapa) {

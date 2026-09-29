@@ -24,6 +24,13 @@ struct SalvosView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 cabecalho
+                if let aviso = viewModel.avisoSincronizacao {
+                    Text(aviso)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
                 seletor
                 conteudo
             }
@@ -124,14 +131,14 @@ struct SalvosView: View {
             
         case .espacos:
             if viewModel.espacosSalvos.isEmpty {
-                estadoVazioEspacos
+                estadoVazioRolavel(estadoVazioEspacos)
             } else {
                 listaSalvos(viewModel.espacosSalvos)
             }
             
         case .eventos:
             if viewModel.eventosSalvos.isEmpty {
-                estadoVazioEventos
+                estadoVazioRolavel(estadoVazioEventos)
             } else {
                 listaSalvos(viewModel.eventosSalvos)
             }
@@ -140,6 +147,15 @@ struct SalvosView: View {
     
     
     // MARK: - Lista
+
+    private func estadoVazioRolavel<Conteudo: View>(_ conteudo: Conteudo) -> some View {
+        GeometryReader { geometria in
+            ScrollView {
+                conteudo.frame(minHeight: geometria.size.height)
+            }
+            .refreshable { await viewModel.carregar() }
+        }
+    }
     
     private func listaSalvos(
         _ itens: [ItemSpotSalvo]
@@ -157,7 +173,7 @@ struct SalvosView: View {
                         ),
                         modo: .visitante(
                             estaSalvo: true,
-                            estaProcessando: viewModel.spotEmAlteracao != nil,
+                            estaProcessando: false,
                             podeSalvar: true,
                             aoAlternar: {
                                 removerDosSalvos(item)
@@ -284,9 +300,7 @@ struct SalvosView: View {
     // MARK: - Remover dos salvos
     
     private func removerDosSalvos(_ item: ItemSpotSalvo) {
-        Task {
-            await viewModel.dessalvar(spotID: item.spot.id)
-        }
+        viewModel.dessalvar(spotID: item.spot.id)
     }
 
     private func imagem(do spot: Spot) -> ImagemCardSimples {

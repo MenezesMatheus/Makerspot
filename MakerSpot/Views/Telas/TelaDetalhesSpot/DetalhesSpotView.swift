@@ -302,7 +302,7 @@ struct DetalhesSpotView: View {
                     .labelStyle(.iconOnly)
 
                     Button {
-                        Task { await viewModel.alternarSalvo() }
+                        viewModel.alternarSalvo()
                     } label: {
                         Label(
                             viewModel.estaSalvo

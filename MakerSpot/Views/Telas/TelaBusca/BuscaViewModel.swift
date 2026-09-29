@@ -21,8 +21,6 @@ final class BuscaViewModel {
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
     private(set) var estaCompletandoBusca = false
-    private(set) var estaSincronizandoSalvos = false
-    private(set) var spotsEmAlteracao: Set<UUID> = []
     private(set) var podeCarregarMais = true
     private(set) var mensagemDeErro: String?
     private(set) var quantidadeRegistrosIgnorados = 0
@@ -220,7 +218,6 @@ final class BuscaViewModel {
         tipoSelecionado = nil
         redefinirPaginacao()
         identificadoresSalvos = []
-        spotsEmAlteracao = []
         fotosSpots.limpar()
         podeCarregarMais = false
     }
@@ -229,56 +226,19 @@ final class BuscaViewModel {
         identificadoresSalvos.contains(spot.id)
     }
 
-    func estaAlterandoSalvo(_ spot: Spot) -> Bool {
-        estaSincronizandoSalvos || spotsEmAlteracao.contains(spot.id)
-    }
-
     func podeSalvar(_ spot: Spot) -> Bool {
         guard let usuarioID = usuarioAtualID() else { return false }
         return spot.proprietarioID != usuarioID
     }
 
-    func alternarSalvo(do spot: Spot) async {
-        guard spotsCarregados.contains(where: { $0.id == spot.id }),
-              podeSalvar(spot),
-              !estaSincronizandoSalvos,
-              spotsEmAlteracao.insert(spot.id).inserted else {
-            return
-        }
-
+    func alternarSalvo(do spot: Spot) {
+        guard spotsCarregados.contains(where: { $0.id == spot.id }), podeSalvar(spot) else { return }
         mensagemDeErro = nil
-        defer { spotsEmAlteracao.remove(spot.id) }
-
-        let estavaSalvo = identificadoresSalvos.contains(spot.id)
-        if estavaSalvo {
-            identificadoresSalvos.remove(spot.id)
-        } else {
-            identificadoresSalvos.insert(spot.id)
-        }
-
         do {
-            if estavaSalvo {
-                try await salvosCRUD.dessalvar(spotID: spot.id)
-            } else {
-                _ = try await salvosCRUD.salvar(spotID: spot.id)
-            }
-        } catch ErroCloudKit.operacaoCancelada {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
-        } catch is CancellationError {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
+            try salvosCRUD.alternar(spot: spot)
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             mensagemDeErro = error.localizedDescription
-        }
-    }
-
-    private func restaurarEstadoSalvo(_ estavaSalvo: Bool, spotID: UUID) {
-        if estavaSalvo {
-            identificadoresSalvos.insert(spotID)
-        } else {
-            identificadoresSalvos.remove(spotID)
         }
     }
 
@@ -304,27 +264,14 @@ final class BuscaViewModel {
         spotsCarregados = alteracoes.consolidar(spotsCarregados) {
             $0.estaDisponivel() && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
         }
-        let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
-        identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
-            .subtracting(spotsEmAlteracao).union(pendentesSalvos)
+        if let salvos = try? salvosCRUD.listar() {
+            identificadoresSalvos = Set(salvos.map(\.spotID))
+        }
     }
 
     func sincronizarSalvos() async {
-        guard !estaSincronizandoSalvos else { return }
-        estaSincronizandoSalvos = true
-        defer {
-            estaSincronizandoSalvos = false
-            aplicarAlteracoes()
-        }
-
         do {
-            identificadoresSalvos = Set(
-                try await salvosCRUD.listar().map(\.spotID)
-            )
-        } catch ErroCloudKit.operacaoCancelada {
-            return
-        } catch is CancellationError {
-            return
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
             mensagemDeErro = error.localizedDescription
         }
