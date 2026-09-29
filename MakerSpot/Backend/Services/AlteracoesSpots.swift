@@ -13,6 +13,11 @@ final class AlteracoesSpots {
     private(set) var salvos: [UUID: ItemSpotSalvo] = [:]
     private(set) var removidosDosSalvos: Set<UUID> = []
     var exclusaoConfirmada: UUID?
+    private(set) var cadastroConfirmado: Spot?
+
+    func confirmarCadastro(_ spot: Spot) {
+        cadastroConfirmado = spot
+    }
 
     func atualizar(_ spot: Spot) {
         guard !excluidos.contains(spot.id),
@@ -92,5 +97,6 @@ final class AlteracoesSpots {
         salvos = [:]
         removidosDosSalvos = []
         exclusaoConfirmada = nil
+        cadastroConfirmado = nil
     }
 }

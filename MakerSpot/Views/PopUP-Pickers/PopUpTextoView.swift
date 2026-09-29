@@ -12,17 +12,20 @@ struct PopUpTextoView: View {
 
     private let titulo: String
     private let subtitulo: String?
+    private let fecharApos: Duration?
 
     @Environment(\.accessibilityReduceMotion) private var reduzirMovimento
 
     init(
         estaApresentado: Binding<Bool>,
         titulo: String,
-        subtitulo: String? = nil
+        subtitulo: String? = nil,
+        fecharApos: Duration? = nil
     ) {
         _estaApresentado = estaApresentado
         self.titulo = titulo
         self.subtitulo = subtitulo
+        self.fecharApos = fecharApos
     }
 
     var body: some View {
@@ -66,6 +69,18 @@ struct PopUpTextoView: View {
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .accessibilityAddTraits(.isModal)
             .accessibilityAction(.escape, fechar)
+            .task {
+                guard let fecharApos else { return }
+                do {
+                    try await Task.sleep(for: fecharApos)
+                    guard !Task.isCancelled, estaApresentado else { return }
+                    fechar()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    return
+                }
+            }
         }
     }
 

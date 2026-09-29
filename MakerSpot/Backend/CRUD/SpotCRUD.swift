@@ -52,7 +52,7 @@ final class SpotCRUD {
 
     func criar(_ dados: DadosSpot, id: UUID = UUID()) async throws -> Spot {
         let contexto = try await autorizacao.contextoAtual()
-        let dados = try ValidadorSpotCRUD.validarENormalizar(dados)
+        let dados = try ValidadorSpotCRUD.validarCadastro(dados)
         let coordenadas = try await localizacao.buscarCoordenadas(para: dados.endereco)
         let agora = Date()
         let spot = Spot(
@@ -70,7 +70,7 @@ final class SpotCRUD {
             redesSociais: dados.redesSociais,
             fotoIDs: [],
             detalhes: dados.detalhes,
-            estaAtivo: true,
+            estaAtivo: false,
             versao: 1,
             criadoEm: agora,
             atualizadoEm: agora
@@ -92,7 +92,6 @@ final class SpotCRUD {
             }
             criado = confirmado
         }
-        atualizarLembretesEmSegundoPlano(para: criado)
         alteracoes.atualizar(criado)
         return criado
     }
@@ -236,6 +235,11 @@ final class SpotCRUD {
         )
         if estaAtivo, try await restricoes.estaRestrito(id) {
             throw ErroCRUD.spotRestrito
+        }
+        if estaAtivo, spot.fotoIDs.isEmpty {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Adicione ao menos uma foto antes de publicar o Spot."
+            )
         }
         guard spot.estaAtivo != estaAtivo else { return spot }
 

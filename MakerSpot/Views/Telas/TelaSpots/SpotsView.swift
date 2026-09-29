@@ -34,7 +34,7 @@ struct SpotsView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    BotaoAdicionarToolbar(titulo: "Adicionar Spot") {
+                    BotaoIconeToolbar(titulo: "Adicionar Spot", simbolo: "plus") {
                         viewModel.iniciarCadastro()
                     }
                 }

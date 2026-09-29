@@ -9,6 +9,10 @@ import SwiftUI
 
 struct TabBarView: View {
     @State private var mostraExclusao = false
+    @State private var mostraCadastro = false
+    @State private var tituloCadastro = ""
+    @State private var abaSelecionada: Aba = .spots
+    @State private var versaoNavegacaoSpots = UUID()
     @State private var spotsViewModel: SpotsViewModel
     @State private var salvosViewModel: SalvosViewModel
     @State private var perfilViewModel: PerfilViewModel
@@ -26,33 +30,59 @@ struct TabBarView: View {
     var body: some View {
         
         
-        TabView {
-            Tab("Spots", image: "SFspoticone") {
+        TabView(selection: $abaSelecionada) {
+            Tab("Spots", image: "SFspoticone", value: Aba.spots) {
                 SpotsView(viewModel: spotsViewModel)
+                    .id(versaoNavegacaoSpots)
             }
 
-            Tab("Salvos", systemImage: "bookmark") {
+            Tab("Salvos", systemImage: "bookmark", value: Aba.salvos) {
                 SalvosView(viewModel: salvosViewModel)
             }
 
-            Tab("Perfil", systemImage: "person.fill") {
+            Tab("Perfil", systemImage: "person.fill", value: Aba.perfil) {
                 PerfilView(viewModel: perfilViewModel)
             }
 
-            Tab(role: .search) {
+            Tab(value: Aba.busca, role: .search) {
                 BuscaView(viewModel: buscaViewModel)
             }
         }
-        .disabled(mostraExclusao)
+        .disabled(mostraExclusao || mostraCadastro)
         .overlay {
             PopUpTextoView(
                 estaApresentado: $mostraExclusao,
                 titulo: "Spot excluído com sucesso!"
             )
+            PopUpTextoView(
+                estaApresentado: $mostraCadastro,
+                titulo: tituloCadastro,
+                fecharApos: .seconds(1.5)
+            )
         }
         .onChange(of: sessao.alteracoesSpots.exclusaoConfirmada) { _, id in
             if id != nil { mostraExclusao = true }
         }
+        .onChange(of: sessao.alteracoesSpots.cadastroConfirmado) { _, spot in
+            guard let spot else { return }
+            spotsViewModel.encerrarCadastro()
+            abaSelecionada = .spots
+            versaoNavegacaoSpots = UUID()
+            tituloCadastro = spot.tipo == .evento
+                ? "Evento cadastrado com sucesso!"
+                : "Espaço cadastrado com sucesso!"
+
+            Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled,
+                      sessao.alteracoesSpots.cadastroConfirmado?.id == spot.id else { return }
+                mostraCadastro = true
+            }
+        }
+    }
+
+    private enum Aba: Hashable {
+        case spots, salvos, perfil, busca
     }
 }
 

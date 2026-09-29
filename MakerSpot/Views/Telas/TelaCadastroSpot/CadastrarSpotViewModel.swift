@@ -201,10 +201,11 @@ final class CadastrarSpotViewModel {
     private(set) var estaCadastrando = false
     private(set) var estaImportandoFotos = false
     private(set) var mensagemDeErro: String?
+    private(set) var mostrarPendencias = false
     private var etapa: EtapaCadastro = .formulario
 
     private enum EtapaCadastro {
-        case formulario, confirmacao, sucesso, concluido
+        case formulario, confirmacao, concluido
     }
 
     var mostraConfirmacao: Bool {
@@ -212,13 +213,8 @@ final class CadastrarSpotViewModel {
         set { if !newValue && etapa == .confirmacao { etapa = .formulario } }
     }
 
-    var mostraSucesso: Bool {
-        get { etapa == .sucesso }
-        set { if !newValue && etapa == .sucesso { etapa = .concluido } }
-    }
-
     var deveFechar: Bool { etapa == .concluido }
-    var mostraPopup: Bool { mostraConfirmacao || mostraSucesso }
+    var mostraPopup: Bool { mostraConfirmacao || mensagemDeErro != nil }
     var bloqueiaInteracao: Bool { estaOcupado || mostraPopup || deveFechar }
     var temFotosPendentes: Bool {
         spotCriado != nil && fotos.contains { !fotoFoiEnviada($0) }
@@ -226,11 +222,51 @@ final class CadastrarSpotViewModel {
 
     var nomeTipo: String { tipoSelecionado == .evento ? "evento" : "espaço" }
     var nomeTipoCapitalizado: String { tipoSelecionado == .evento ? "Evento" : "Espaço" }
-    var tituloSucesso: String { "\(nomeTipoCapitalizado) cadastrado com sucesso!" }
+
+    var tituloPendente: Bool { mostrarPendencias && textoAusente(titulo) }
+    var enderecoPendente: Bool { mostrarPendencias && !mostraEndereco }
+    var ruaPendente: Bool { mostrarPendencias && textoAusente(endereco.logradouro) }
+    var numeroPendente: Bool { mostrarPendencias && textoAusente(endereco.numero) }
+    var bairroPendente: Bool { mostrarPendencias && textoAusente(endereco.bairro ?? "") }
+    var cidadePendente: Bool { mostrarPendencias && textoAusente(endereco.cidade) }
+    var estadoPendente: Bool { mostrarPendencias && textoAusente(endereco.estado) }
+    var cepPendente: Bool { mostrarPendencias && textoAusente(endereco.codigoPostal ?? "") }
+    var paisPendente: Bool { mostrarPendencias && textoAusente(endereco.codigoPais) }
+    var funcionamentoPendente: Bool {
+        mostrarPendencias && tipoSelecionado == .espaco &&
+            (horariosFuncionamento.isEmpty || horariosFuncionamento.contains { $0.dias.isEmpty })
+    }
+    var fotoPendente: Bool { mostrarPendencias && fotos.isEmpty }
+
+    var camposObrigatoriosAusentes: [String] {
+        var campos: [String] = []
+        if spotCriado == nil {
+            if textoAusente(titulo) { campos.append("título") }
+            if !mostraEndereco {
+                campos.append("endereço")
+            } else {
+                if textoAusente(endereco.logradouro) { campos.append("rua") }
+                if textoAusente(endereco.numero) { campos.append("número") }
+                if textoAusente(endereco.bairro ?? "") { campos.append("bairro") }
+                if textoAusente(endereco.cidade) { campos.append("cidade") }
+                if textoAusente(endereco.estado) { campos.append("estado") }
+                if textoAusente(endereco.codigoPostal ?? "") { campos.append("CEP") }
+                if textoAusente(endereco.codigoPais) { campos.append("país") }
+            }
+            if tipoSelecionado == .espaco &&
+                (horariosFuncionamento.isEmpty || horariosFuncionamento.contains(where: { $0.dias.isEmpty })) {
+                campos.append("dias de funcionamento")
+            }
+        }
+        if fotos.isEmpty { campos.append("foto") }
+        return campos
+    }
 
     var tituloConfirmacao: String {
         if spotCriado != nil {
-            return "Deseja concluir o envio das fotos do \(nomeTipo)?"
+            return temFotosPendentes
+                ? "Deseja concluir o envio das fotos do \(nomeTipo)?"
+                : "Deseja publicar o \(nomeTipo) \(titulo)?"
         }
         let nome = titulo.trimmingCharacters(in: .whitespacesAndNewlines)
         return "Deseja cadastrar o \(nomeTipo) \(nome)?"
@@ -238,6 +274,8 @@ final class CadastrarSpotViewModel {
 
     @ObservationIgnored private let criarSpot: (DadosSpot, UUID) async throws -> Spot
     @ObservationIgnored private let enviarFoto: (URL, UUID) async throws -> Spot
+    @ObservationIgnored private let publicarSpot: (UUID) async throws -> Spot
+    @ObservationIgnored private var aoConcluirCadastro: ((Spot) -> Void)?
     @ObservationIgnored private var arquivosEnviados: Set<URL> = []
     @ObservationIgnored private var dadosEnviados: DadosSpot?
     @ObservationIgnored private var dadosDaTentativa: DadosSpot?
@@ -248,7 +286,8 @@ final class CadastrarSpotViewModel {
         agora: Date = Date(),
         fusoHorario: TimeZone = .current,
         criarSpot: @escaping (DadosSpot, UUID) async throws -> Spot,
-        enviarFoto: @escaping (URL, UUID) async throws -> Spot
+        enviarFoto: @escaping (URL, UUID) async throws -> Spot,
+        publicarSpot: @escaping (UUID) async throws -> Spot
     ) {
         self.telefoneSugerido = ApoioCRUD.textoOpcional(telefoneSugerido)
         self.inicio = agora
@@ -256,6 +295,7 @@ final class CadastrarSpotViewModel {
         self.fusoHorario = fusoHorario
         self.criarSpot = criarSpot
         self.enviarFoto = enviarFoto
+        self.publicarSpot = publicarSpot
     }
 
     convenience init(
@@ -268,7 +308,8 @@ final class CadastrarSpotViewModel {
             criarSpot: { dados, id in try await spotCRUD.criar(dados, id: id) },
             enviarFoto: { arquivo, id in
                 try await fotoCRUD.enviarParaSpot(arquivoURL: arquivo, spotID: id).spotAtualizado
-            }
+            },
+            publicarSpot: { id in try await spotCRUD.definirAtivo(true, para: id) }
         )
     }
 
@@ -278,6 +319,7 @@ final class CadastrarSpotViewModel {
             fotoCRUD: FotoCRUD(sessao: sessao),
             telefoneSugerido: sessao.usuarioAtual?.telefonePadrao
         )
+        aoConcluirCadastro = { sessao.alteracoesSpots.confirmarCadastro($0) }
     }
 
     var estaOcupado: Bool { estaCadastrando || estaImportandoFotos }
@@ -288,19 +330,31 @@ final class CadastrarSpotViewModel {
     }
 
     var podeCadastrar: Bool {
-        !estaOcupado && !mostraSucesso && !deveFechar
-            && (spotCriado != nil || (try? dadosDoFormulario()) != nil)
+        !estaOcupado && !mostraPopup && !deveFechar
     }
 
     func solicitarConfirmacao() {
         guard podeCadastrar else { return }
+        mostrarPendencias = true
+        guard camposObrigatoriosAusentes.isEmpty else { return }
+        do {
+            _ = try dadosEnviados ?? dadosDoFormulario()
+        } catch {
+            mensagemDeErro = error.localizedDescription
+            return
+        }
         etapa = .confirmacao
     }
 
     func confirmarCadastro() async {
         guard podeCadastrar else { return }
         etapa = .formulario
-        if await cadastrarFormulario() != nil { etapa = .sucesso }
+        if await cadastrarFormulario() != nil { etapa = .concluido }
+    }
+
+    func notificarCadastroConcluido() {
+        guard deveFechar, let spotCriado else { return }
+        aoConcluirCadastro?(spotCriado)
     }
 
     func dadosDoFormulario() throws -> DadosSpot {
@@ -323,7 +377,7 @@ final class CadastrarSpotViewModel {
         }
 
         let url = try urlInformada()
-        return try ValidadorSpotCRUD.validarENormalizar(DadosSpot(
+        return try ValidadorSpotCRUD.validarCadastro(DadosSpot(
             nome: titulo,
             descricao: descricao,
             endereco: endereco,
@@ -419,7 +473,7 @@ final class CadastrarSpotViewModel {
 
     @discardableResult
     func cadastrarFormulario() async -> Spot? {
-        guard !estaOcupado, !mostraSucesso, !deveFechar else { return nil }
+        guard !estaOcupado, !deveFechar else { return nil }
         do {
             let dados = try dadosEnviados ?? dadosDoFormulario()
             return await cadastrar(dados: dados, fotos: fotos.map(\.arquivoURL))
@@ -433,6 +487,11 @@ final class CadastrarSpotViewModel {
     @discardableResult
     func cadastrar(dados: DadosSpot, fotos: [URL] = []) async -> Spot? {
         guard !estaOcupado else { return nil }
+        guard !fotos.isEmpty else {
+            mostrarPendencias = true
+            mensagemDeErro = "Adicione ao menos uma foto para cadastrar o \(nomeTipo)."
+            return nil
+        }
         estaCadastrando = true
         mensagemDeErro = nil
         defer { estaCadastrando = false }
@@ -464,11 +523,20 @@ final class CadastrarSpotViewModel {
                 arquivosEnviados.insert(arquivo)
                 quantidadeFotosProcessadas = arquivosEnviados.count
             }
+            if !spot.estaAtivo {
+                spot = try await publicarSpot(spot.id)
+                spotCriado = spot
+            }
             return spot
         } catch {
             let motivo = error is CancellationError ? "O envio foi interrompido." : error.localizedDescription
-            mensagemDeErro = spotCriado == nil ? motivo
-                : "O \(nomeTipo) já foi criado, mas ainda há fotos pendentes. \(motivo) Tente novamente ou remova a foto pendente."
+            if spotCriado == nil {
+                mensagemDeErro = motivo
+            } else if fotos.contains(where: { !arquivosEnviados.contains($0) }) {
+                mensagemDeErro = "O \(nomeTipo) ficou como rascunho porque ainda há fotos pendentes. \(motivo) Tente novamente ou remova a foto pendente."
+            } else {
+                mensagemDeErro = "As fotos foram enviadas, mas o \(nomeTipo) continua como rascunho. \(motivo) Tente novamente para publicar."
+            }
             return nil
         }
     }
@@ -522,6 +590,10 @@ final class CadastrarSpotViewModel {
 
     private func minutos(_ horario: HorarioLocal) -> Int {
         horario.hora * 60 + horario.minuto
+    }
+
+    private func textoAusente(_ valor: String) -> Bool {
+        valor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func apagarArquivos(da foto: FotoCadastroSpot) {
