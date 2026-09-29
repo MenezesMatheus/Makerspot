@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct TabBarView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var mostraExclusao = false
     @State private var mostraCadastro = false
     @State private var tituloCadastro = ""
@@ -76,6 +77,13 @@ struct TabBarView: View {
         .onChange(of: sessao.alteracoesSpots.exclusaoConfirmada) { _, id in
             if id != nil { mostraExclusao = true }
         }
+        .onChange(of: abaSelecionada) { _, aba in
+            Task { await atualizarAba(aba) }
+        }
+        .onChange(of: scenePhase) { _, fase in
+            guard fase == .active else { return }
+            Task { await atualizarAba(abaSelecionada) }
+        }
         .onChange(of: sessao.alteracoesSpots.cadastroConfirmado) { _, spot in
             guard let spot else { return }
             spotsViewModel.encerrarCadastro()
@@ -91,6 +99,20 @@ struct TabBarView: View {
                       sessao.alteracoesSpots.cadastroConfirmado?.id == spot.id else { return }
                 mostraCadastro = true
             }
+        }
+    }
+
+    @MainActor
+    private func atualizarAba(_ aba: Aba) async {
+        switch aba {
+        case .spots:
+            await spotsViewModel.recarregar()
+        case .salvos:
+            await salvosViewModel.carregar()
+        case .perfil:
+            await perfilViewModel.carregar()
+        case .busca:
+            await buscaViewModel.recarregar()
         }
     }
 

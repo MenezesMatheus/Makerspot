@@ -118,7 +118,53 @@ final class SpotsViewModel {
     }
 
     func recarregar() async {
-        await carregarPrimeiraPagina(tipo: tipoSelecionado)
+        guard carregouPrimeiraPagina else {
+            await carregarPrimeiraPagina(tipo: tipoSelecionado)
+            return
+        }
+        guard !estaCarregando else { return }
+        estaCarregando = true
+        mensagemDeErro = nil
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
+
+        do {
+            var novos: [Spot] = []
+            var novoCursor: CursorPaginaSpots?
+            var ignorados = 0
+            var paginasCarregadas = 0
+            repeat {
+                let pagina = try await crud.listarAtivos(
+                    tipo: tipoSelecionado,
+                    limite: tamanhoDaPagina,
+                    continuando: novoCursor
+                )
+                novos.append(contentsOf: pagina.spots)
+                ignorados += pagina.quantidadeRegistrosIgnorados
+                novoCursor = pagina.proximoCursor
+                paginasCarregadas += 1
+            } while novoCursor != nil
+                && paginasCarregadas < 3
+                && (novos.filter { $0.tipo == .evento }.count < 3
+                    || novos.filter { $0.tipo == .espaco }.count < 5)
+                && !Task.isCancelled
+
+            guard !Task.isCancelled else { return }
+            spots = novos
+            cursor = novoCursor
+            identificadoresCarregados = Set(novos.map(\.id))
+            quantidadeRegistrosIgnorados = ignorados
+            podeCarregarMais = novoCursor != nil
+            await sincronizarSalvos()
+        } catch ErroCloudKit.operacaoCancelada {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func carregarProximaPagina() async {

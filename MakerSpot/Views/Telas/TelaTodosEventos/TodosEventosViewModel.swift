@@ -97,7 +97,47 @@ final class TodosEventosViewModel {
     }
 
     func recarregar() async {
-        await carregarPrimeiraPagina()
+        guard carregouPrimeiraPagina else {
+            await carregarPrimeiraPagina()
+            return
+        }
+        guard !estaCarregando else { return }
+        estaCarregando = true
+        mensagemDeErro = nil
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
+
+        do {
+            var novos: [Spot] = []
+            var novoCursor: CursorPaginaSpots?
+            var ignorados = 0
+            repeat {
+                let pagina = try await crud.listarAtivos(
+                    tipo: .evento,
+                    limite: tamanhoDaPagina,
+                    continuando: novoCursor
+                )
+                novos.append(contentsOf: pagina.spots)
+                ignorados += pagina.quantidadeRegistrosIgnorados
+                novoCursor = pagina.proximoCursor
+            } while novos.isEmpty && novoCursor != nil && !Task.isCancelled
+
+            guard !Task.isCancelled else { return }
+            eventos = novos
+            cursor = novoCursor
+            identificadoresCarregados = Set(novos.map(\.id))
+            quantidadeRegistrosIgnorados = ignorados
+            podeCarregarMais = novoCursor != nil
+            await sincronizarSalvos()
+        } catch ErroCloudKit.operacaoCancelada {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func carregarProximaPagina() async {

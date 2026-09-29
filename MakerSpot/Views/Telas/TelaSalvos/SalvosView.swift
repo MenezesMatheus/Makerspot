@@ -12,6 +12,7 @@ struct SalvosView: View {
     @State private var categoriaSelecionada: CategoriaSalvos = .espacos
     @State private var explorarEspacos = false
     @State private var explorarEventos = false
+    @State private var jaApareceu = false
 
     init(viewModel: SalvosViewModel) {
         self.viewModel = viewModel
@@ -42,6 +43,9 @@ struct SalvosView: View {
             }
             .onAppear {
                 viewModel.atualizarDisponibilidade()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.carregar() }
             }
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
                 viewModel.atualizarDisponibilidade()
@@ -173,6 +177,9 @@ struct SalvosView: View {
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        .refreshable {
+            await viewModel.carregar()
+        }
     }
     
     

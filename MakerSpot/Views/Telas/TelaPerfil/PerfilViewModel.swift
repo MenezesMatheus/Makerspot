@@ -48,7 +48,7 @@ final class PerfilViewModel {
             usuarioCRUD: UsuarioCRUD(sessao: sessao),
             fotoCRUD: fotoCRUD,
             spotCRUD: SpotCRUD(sessao: sessao),
-            fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD)
+            fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD, sessao: sessao)
         )
         usuario = sessao.usuarioAtual
         alteracoes = sessao.alteracoesSpots
@@ -77,9 +77,14 @@ final class PerfilViewModel {
         }
 
         do {
-            usuario = try await usuarioCRUD.buscarUsuarioAtual()
-            fotoPerfil = try await fotoCRUD.buscarFotoPerfilAtual()
-            let spots = try await spotCRUD.listarDoUsuarioAtual()
+            async let usuarioAtual = usuarioCRUD.buscarUsuarioAtual()
+            async let fotoAtual = fotoCRUD.buscarFotoPerfilAtual()
+            async let spotsAtuais = spotCRUD.listarDoUsuarioAtual()
+            let (usuarioCarregado, fotoCarregada, spots) = try await (
+                usuarioAtual, fotoAtual, spotsAtuais
+            )
+            usuario = usuarioCarregado
+            fotoPerfil = fotoCarregada
             eventos = spots.filter { $0.tipo == .evento }
             espacos = spots.filter { $0.tipo == .espaco }
         } catch is CancellationError {

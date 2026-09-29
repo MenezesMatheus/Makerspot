@@ -19,6 +19,7 @@ struct PerfilView: View {
     @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
     @State private var agora = Date()
+    @State private var jaApareceu = false
 
     init(viewModel: PerfilViewModel) {
         self.viewModel = viewModel
@@ -212,6 +213,9 @@ struct PerfilView: View {
             }
             .onAppear {
                 agora = Date()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.carregar() }
             }
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
                 agora = Date()

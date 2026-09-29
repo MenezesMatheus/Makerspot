@@ -97,7 +97,49 @@ final class TodosEspacosViewModel {
     }
 
     func recarregar() async {
-        await carregarPrimeiraPagina()
+        guard carregouPrimeiraPagina else {
+            await carregarPrimeiraPagina()
+            return
+        }
+        guard !estaCarregando else { return }
+        estaCarregando = true
+        mensagemDeErro = nil
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
+
+        do {
+            var novos: [Spot] = []
+            var novoCursor: CursorPaginaSpots?
+            var ignorados = 0
+            var paginasPercorridas = 0
+            repeat {
+                let pagina = try await crud.listarAtivos(
+                    tipo: .espaco,
+                    limite: tamanhoDaPagina,
+                    continuando: novoCursor
+                )
+                novos.append(contentsOf: pagina.spots)
+                ignorados += pagina.quantidadeRegistrosIgnorados
+                novoCursor = pagina.proximoCursor
+                paginasPercorridas += 1
+            } while novos.isEmpty && novoCursor != nil && paginasPercorridas < 3 && !Task.isCancelled
+
+            guard !Task.isCancelled else { return }
+            espacos = novos
+            cursor = novoCursor
+            identificadoresCarregados = Set(novos.map(\.id))
+            quantidadeRegistrosIgnorados = ignorados
+            podeCarregarMais = novoCursor != nil
+            await sincronizarSalvos()
+        } catch ErroCloudKit.operacaoCancelada {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func carregarProximaPagina() async {
