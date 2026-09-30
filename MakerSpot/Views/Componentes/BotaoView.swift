@@ -11,6 +11,7 @@ struct BotaoIconeToolbar: View {
     let titulo: String
     let simbolo: String
     var estaProcessando = false
+    var cor: Color = .accentColor
     let acao: () -> Void
 
     var body: some View {
@@ -25,7 +26,7 @@ struct BotaoIconeToolbar: View {
                 }
             }
             .frame(width: 44, height: 44)
-            .background(Color.accentColor, in: Circle())
+            .background(cor, in: Circle())
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -35,10 +36,11 @@ struct BotaoIconeToolbar: View {
 
 struct BotaoAdicionarToolbar: View {
     let titulo: String
+    var cor: Color = .accentColor
     let acao: () -> Void
 
     var body: some View {
-        BotaoIconeToolbar(titulo: titulo, simbolo: "plus", acao: acao)
+        BotaoIconeToolbar(titulo: titulo, simbolo: "plus", cor: cor, acao: acao)
     }
 }
 

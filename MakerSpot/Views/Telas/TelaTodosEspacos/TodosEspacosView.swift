@@ -44,7 +44,7 @@ struct TodosEspacosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                BotaoAdicionarToolbar(titulo: "Adicionar espaço") {
+                BotaoAdicionarToolbar(titulo: "Adicionar espaço", cor: Color("CorEspaco")) {
                     viewModel.iniciarCadastro()
                 }
             }
