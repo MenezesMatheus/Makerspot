@@ -15,13 +15,11 @@ struct SheetEditarPerfilView: View {
     @State private var mostrarOpcoesFoto = false
     @State private var mostrarSeletorFotos = false
     @State private var confirmarAlteracoes = false
-    @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
     @State private var detentSelecionado: PresentationDetent = .large
     @FocusState private var campoFocado: Campo?
 
     private let aoAtualizar: (Usuario) -> Void
-    private let aoEncerrarSessao: () -> Void
     private let aoExcluirConta: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -29,12 +27,10 @@ struct SheetEditarPerfilView: View {
     init(
         viewModel: EditarPerfilViewModel,
         aoAtualizar: @escaping (Usuario) -> Void = { _ in },
-        aoEncerrarSessao: @escaping () -> Void = { },
         aoExcluirConta: @escaping () -> Void = { }
     ) {
         _viewModel = State(initialValue: viewModel)
         self.aoAtualizar = aoAtualizar
-        self.aoEncerrarSessao = aoEncerrarSessao
         self.aoExcluirConta = aoExcluirConta
     }
 
@@ -42,13 +38,11 @@ struct SheetEditarPerfilView: View {
         usuario: Usuario,
         sessao: SessaoUsuario,
         aoAtualizar: @escaping (Usuario) -> Void = { _ in },
-        aoEncerrarSessao: @escaping () -> Void = { },
         aoExcluirConta: @escaping () -> Void = { }
     ) {
         self.init(
             viewModel: EditarPerfilViewModel(usuario: usuario, sessao: sessao),
             aoAtualizar: aoAtualizar,
-            aoEncerrarSessao: aoEncerrarSessao,
             aoExcluirConta: aoExcluirConta
         )
     }
@@ -97,28 +91,13 @@ struct SheetEditarPerfilView: View {
 
                             Spacer(minLength: 80)
 
-                            VStack(spacing: 18) {
-                                Button(role: .destructive) {
-                                    campoFocado = nil
-                                    confirmarSaida = true
-                                } label: {
-                                    Text("Encerrar Sessão")
-                                        .font(.body.weight(.medium))
-                                        .padding(.horizontal, 8)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .buttonBorderShape(.capsule)
-                                .controlSize(.large)
-                                .tint(.red)
-
-                                Button("Excluir Conta", role: .destructive) {
-                                    campoFocado = nil
-                                    confirmarExclusao = true
-                                }
-                                .font(.body)
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.red)
+                            Button("Excluir Conta", role: .destructive) {
+                                campoFocado = nil
+                                confirmarExclusao = true
                             }
+                            .font(.body)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.red)
                             .padding(.bottom, 34)
                         }
                         .frame(maxWidth: 520)
@@ -154,7 +133,6 @@ struct SheetEditarPerfilView: View {
             .disabled(
                 viewModel.estaVerificandoFoto
                     || confirmarAlteracoes
-                    || confirmarSaida
                     || confirmarExclusao
             )
 
@@ -164,15 +142,6 @@ struct SheetEditarPerfilView: View {
                 subtitulo: viewModel.descricaoAlteracoesParaConfirmacao,
                 tituloAcao: "Confirmar",
                 aoConfirmar: salvar
-            )
-
-            PopUpAcaoView(
-                estaApresentado: $confirmarSaida,
-                titulo: "Deseja encerrar sua sessão?",
-                subtitulo: "Você precisará entrar novamente com sua conta Apple.",
-                tituloAcao: "Encerrar Sessão",
-                acaoDestrutiva: true,
-                aoConfirmar: encerrarSessao
             )
 
             PopUpAcaoView(
@@ -213,7 +182,6 @@ struct SheetEditarPerfilView: View {
             viewModel.estaSalvando
                 || viewModel.estaExcluindoConta
                 || confirmarAlteracoes
-                || confirmarSaida
                 || confirmarExclusao
         )
         .alert(
@@ -411,13 +379,6 @@ struct SheetEditarPerfilView: View {
                 aoAtualizar(usuario)
                 dismiss()
             }
-        }
-    }
-
-    private func encerrarSessao() {
-        if viewModel.sair() {
-            dismiss()
-            aoEncerrarSessao()
         }
     }
 

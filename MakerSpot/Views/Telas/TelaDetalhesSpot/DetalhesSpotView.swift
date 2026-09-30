@@ -140,13 +140,8 @@ struct DetalhesSpotView: View {
 
                 CarrosselFotosSpot(
                     fotos: viewModel.fotos,
-                    fotoProvisoriaURL: imagemInicialURL,
-                    estaCarregando: viewModel.estaCarregando
-                        && viewModel.fotos.isEmpty
-                        && imagemInicialURL == nil
-                        && !spot.fotoIDs.isEmpty
+                    fotoProvisoriaURL: imagemInicialURL
                 )
-                .padding(.bottom, 24)
 
                 // MARK: - Descrição
 

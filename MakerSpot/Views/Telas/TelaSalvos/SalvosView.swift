@@ -9,7 +9,7 @@ import Combine
 struct SalvosView: View {
     @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: SalvosViewModel
-    @State private var categoriaSelecionada: CategoriaSalvos = .espacos
+    @State private var categoriaSelecionada: CategoriaSalvos = .eventos
     @State private var explorarEspacos = false
     @State private var explorarEventos = false
     @State private var jaApareceu = false
@@ -111,11 +111,11 @@ struct SalvosView: View {
             "Categoria",
             selection: $categoriaSelecionada
         ) {
-            Text("Espaços")
-                .tag(CategoriaSalvos.espacos)
-            
             Text("Eventos")
                 .tag(CategoriaSalvos.eventos)
+
+            Text("Espaços")
+                .tag(CategoriaSalvos.espacos)
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)

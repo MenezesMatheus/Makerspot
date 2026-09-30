@@ -45,7 +45,7 @@ struct TodosEventosView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                BotaoAdicionarToolbar(titulo: "Adicionar evento") {
+                BotaoAdicionarToolbar(titulo: "Adicionar evento", cor: Color("CorEvento")) {
                     viewModel.iniciarCadastro()
                 }
             }

@@ -197,7 +197,6 @@ struct PerfilView: View {
                             viewModel.aplicarAtualizacao(usuario)
                             Task { await viewModel.carregar() }
                         },
-                        aoEncerrarSessao: viewModel.limparPerfil,
                         aoExcluirConta: viewModel.limparPerfil
                     )
                 }

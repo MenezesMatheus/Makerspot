@@ -220,6 +220,9 @@ final class CadastrarSpotViewModel {
     var bloqueiaInteracao: Bool { estaOcupado || mostraPopup || deveFechar }
     var nomeTipo: String { tipoSelecionado == .evento ? "evento" : "espaço" }
     var tituloPendente: Bool { mostrarPendencias && textoAusente(titulo) }
+    var telefonePendente: Bool {
+        mostrarPendencias && (!mostraTelefone || textoAusente(telefone))
+    }
     var enderecoPendente: Bool { mostrarPendencias && !mostraEndereco }
     var ruaPendente: Bool { mostrarPendencias && textoAusente(endereco.logradouro) }
     var numeroPendente: Bool { mostrarPendencias && textoAusente(endereco.numero) }
@@ -238,6 +241,7 @@ final class CadastrarSpotViewModel {
         var campos: [String] = []
         if spotCriado == nil {
             if textoAusente(titulo) { campos.append("título") }
+            if !mostraTelefone || textoAusente(telefone) { campos.append("telefone") }
             if !mostraEndereco {
                 campos.append("endereço")
             } else {
