@@ -6,9 +6,11 @@
 //
 
 import SwiftUI
+import Combine
 
 struct MeusEventosView: View {
     @State private var viewModel: MeusEventosViewModel
+    @State private var jaApareceu = false
     @State private var idParaExcluir: UUID?
     @State private var mostrarConfirmacaoExclusao = false
 
@@ -75,8 +77,27 @@ struct MeusEventosView: View {
             guard !viewModel.carregouDados else { return }
             await viewModel.carregar()
         }
+        .onAppear {
+            viewModel.atualizarDisponibilidade()
+            defer { jaApareceu = true }
+            guard jaApareceu else { return }
+            Task { await viewModel.carregar() }
+        }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+            viewModel.atualizarDisponibilidade()
+        }
+        .overlay {
+            PopUpTextoView(
+                estaApresentado: Binding(
+                    get: { viewModel.avisoAtivacao != nil },
+                    set: { if !$0 { viewModel.limparAvisoAtivacao() } }
+                ),
+                titulo: viewModel.avisoAtivacao?.titulo ?? "",
+                subtitulo: viewModel.avisoAtivacao?.mensagem
+            )
+        }
         .alert(
-            "Não foi possível carregar",
+            "Não foi possível concluir",
             isPresented: Binding(
                 get: { viewModel.mensagemDeErro != nil },
                 set: { if !$0 { viewModel.limparErro() } }
@@ -163,8 +184,9 @@ struct MeusEventosView: View {
                         imagem: imagem(do: spot)
                     ),
                     modo: .proprietario(
-                        estaAtivo: spot.estaAtivo,
+                        estaAtivo: spot.estaDisponivel(em: viewModel.agora),
                         estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        podeAlterar: !spot.eventoEncerrado(em: viewModel.agora),
                         aoAlternar: { novoValor in
                             Task {
                                 await viewModel.definirAtivo(

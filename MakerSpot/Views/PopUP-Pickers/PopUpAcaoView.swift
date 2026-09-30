@@ -144,11 +144,12 @@ struct PopUpAcaoView: View {
             Button(action: confirmar) {
                 Text(tituloAcao)
                     .font(.title3)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.accentColor, in: Capsule())
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.capsule)
-            .controlSize(.large)
+            .buttonStyle(.plain)
         }
     }
 

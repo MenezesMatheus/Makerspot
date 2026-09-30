@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SalvosView: View {
     @Environment(SessaoUsuario.self) private var sessao
@@ -11,6 +12,7 @@ struct SalvosView: View {
     @State private var categoriaSelecionada: CategoriaSalvos = .espacos
     @State private var explorarEspacos = false
     @State private var explorarEventos = false
+    @State private var jaApareceu = false
 
     init(viewModel: SalvosViewModel) {
         self.viewModel = viewModel
@@ -22,6 +24,13 @@ struct SalvosView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 cabecalho
+                if let aviso = viewModel.avisoSincronizacao {
+                    Text(aviso)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
                 seletor
                 conteudo
             }
@@ -38,6 +47,15 @@ struct SalvosView: View {
             }
             .task {
                 await viewModel.carregar()
+            }
+            .onAppear {
+                viewModel.atualizarDisponibilidade()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.carregar() }
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                viewModel.atualizarDisponibilidade()
             }
             .alert(
                 "Não foi possível carregar os salvos",
@@ -113,14 +131,14 @@ struct SalvosView: View {
             
         case .espacos:
             if viewModel.espacosSalvos.isEmpty {
-                estadoVazioEspacos
+                estadoVazioRolavel(estadoVazioEspacos)
             } else {
                 listaSalvos(viewModel.espacosSalvos)
             }
             
         case .eventos:
             if viewModel.eventosSalvos.isEmpty {
-                estadoVazioEventos
+                estadoVazioRolavel(estadoVazioEventos)
             } else {
                 listaSalvos(viewModel.eventosSalvos)
             }
@@ -129,6 +147,15 @@ struct SalvosView: View {
     
     
     // MARK: - Lista
+
+    private func estadoVazioRolavel<Conteudo: View>(_ conteudo: Conteudo) -> some View {
+        GeometryReader { geometria in
+            ScrollView {
+                conteudo.frame(minHeight: geometria.size.height)
+            }
+            .refreshable { await viewModel.carregar() }
+        }
+    }
     
     private func listaSalvos(
         _ itens: [ItemSpotSalvo]
@@ -146,7 +173,7 @@ struct SalvosView: View {
                         ),
                         modo: .visitante(
                             estaSalvo: true,
-                            estaProcessando: viewModel.spotEmAlteracao != nil,
+                            estaProcessando: false,
                             podeSalvar: true,
                             aoAlternar: {
                                 removerDosSalvos(item)
@@ -166,6 +193,9 @@ struct SalvosView: View {
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        .refreshable {
+            await viewModel.carregar()
+        }
     }
     
     
@@ -270,9 +300,7 @@ struct SalvosView: View {
     // MARK: - Remover dos salvos
     
     private func removerDosSalvos(_ item: ItemSpotSalvo) {
-        Task {
-            await viewModel.dessalvar(spotID: item.spot.id)
-        }
+        viewModel.dessalvar(spotID: item.spot.id)
     }
 
     private func imagem(do spot: Spot) -> ImagemCardSimples {

@@ -8,7 +8,12 @@
 import SwiftUI
 
 struct TabBarView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var mostraExclusao = false
+    @State private var mostraCadastro = false
+    @State private var tituloCadastro = ""
+    @State private var abaSelecionada: Aba = .spots
+    @State private var versaoNavegacaoSpots = UUID()
     @State private var spotsViewModel: SpotsViewModel
     @State private var salvosViewModel: SalvosViewModel
     @State private var perfilViewModel: PerfilViewModel
@@ -26,33 +31,93 @@ struct TabBarView: View {
     var body: some View {
         
         
-        TabView {
-            Tab("Spots", image: "SFspoticone") {
+        TabView(selection: $abaSelecionada) {
+            Tab("Spots", image: "SFspoticone", value: Aba.spots) {
                 SpotsView(viewModel: spotsViewModel)
+                    .id(versaoNavegacaoSpots)
             }
 
-            Tab("Salvos", systemImage: "bookmark") {
+            Tab("Salvos", systemImage: "bookmark", value: Aba.salvos) {
                 SalvosView(viewModel: salvosViewModel)
             }
 
-            Tab("Perfil", systemImage: "person.fill") {
+            Tab("Perfil", systemImage: "person.fill", value: Aba.perfil) {
                 PerfilView(viewModel: perfilViewModel)
             }
 
-            Tab(role: .search) {
+            Tab(value: Aba.busca, role: .search) {
                 BuscaView(viewModel: buscaViewModel)
             }
         }
-        .disabled(mostraExclusao)
+        .disabled(mostraExclusao || mostraCadastro || sessao.enviosFotosCadastro.mensagemDeErro != nil)
         .overlay {
             PopUpTextoView(
                 estaApresentado: $mostraExclusao,
                 titulo: "Spot excluído com sucesso!"
             )
+            PopUpTextoView(
+                estaApresentado: $mostraCadastro,
+                titulo: tituloCadastro,
+                subtitulo: "As fotos aparecerão assim que o envio terminar.",
+                fecharApos: .seconds(1.5)
+            )
+            PopUpTextoView(
+                estaApresentado: Binding(
+                    get: {
+                        !mostraCadastro && sessao.enviosFotosCadastro.mensagemDeErro != nil
+                    },
+                    set: {
+                        if !$0 { sessao.enviosFotosCadastro.limparErro() }
+                    }
+                ),
+                titulo: "Fotos ainda não enviadas",
+                subtitulo: sessao.enviosFotosCadastro.mensagemDeErro
+            )
         }
         .onChange(of: sessao.alteracoesSpots.exclusaoConfirmada) { _, id in
             if id != nil { mostraExclusao = true }
         }
+        .onChange(of: abaSelecionada) { _, aba in
+            Task { await atualizarAba(aba) }
+        }
+        .onChange(of: scenePhase) { _, fase in
+            guard fase == .active else { return }
+            Task { await atualizarAba(abaSelecionada) }
+        }
+        .onChange(of: sessao.alteracoesSpots.cadastroConfirmado) { _, spot in
+            guard let spot else { return }
+            spotsViewModel.encerrarCadastro()
+            abaSelecionada = .spots
+            versaoNavegacaoSpots = UUID()
+            tituloCadastro = spot.tipo == .evento
+                ? "Evento cadastrado com sucesso!"
+                : "Espaço cadastrado com sucesso!"
+
+            Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled,
+                      sessao.alteracoesSpots.cadastroConfirmado?.id == spot.id else { return }
+                mostraCadastro = true
+            }
+        }
+    }
+
+    @MainActor
+    private func atualizarAba(_ aba: Aba) async {
+        switch aba {
+        case .spots:
+            await spotsViewModel.recarregar()
+        case .salvos:
+            await salvosViewModel.carregar()
+        case .perfil:
+            await perfilViewModel.carregar()
+        case .busca:
+            await buscaViewModel.recarregar()
+        }
+    }
+
+    private enum Aba: Hashable {
+        case spots, salvos, perfil, busca
     }
 }
 

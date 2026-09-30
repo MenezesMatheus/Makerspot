@@ -12,6 +12,11 @@ enum ImagemCardSimples {
     case asset(String)
     case arquivo(URL)
     case placeholder
+
+    var arquivoURL: URL? {
+        if case .arquivo(let url) = self { return url }
+        return nil
+    }
 }
 
 private extension TipoSpot {
@@ -47,12 +52,14 @@ enum CardSimplesModo {
     case proprietario(
         estaAtivo: Bool,
         estaProcessando: Bool,
+        podeAlterar: Bool,
         aoAlternar: (Bool) -> Void
     )
 }
 
 struct CardSimplesDados: Identifiable {
     let id: UUID
+    let spot: Spot?
     let tipo: TipoSpot
     let titulo: String
     let imagem: ImagemCardSimples
@@ -68,6 +75,7 @@ struct CardSimplesDados: Identifiable {
         localCidade: String
     ) {
         self.id = id
+        self.spot = nil
         self.tipo = tipo
         self.titulo = titulo
         self.imagem = imagem
@@ -81,6 +89,7 @@ struct CardSimplesDados: Identifiable {
         agora: Date = Date()
     ) {
         self.id = spot.id
+        self.spot = spot
         self.tipo = spot.tipo
         self.titulo = spot.nome
         self.imagem = imagem
@@ -162,7 +171,12 @@ struct CardSimplesView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             NavigationLink {
-                DetalhesSpotView(spotID: dados.id, sessao: sessao)
+                DetalhesSpotView(
+                    spotID: dados.id,
+                    sessao: sessao,
+                    spotInicial: dados.spot,
+                    imagemInicialURL: dados.imagem.arquivoURL
+                )
             } label: {
                 conteudo
             }
@@ -175,6 +189,11 @@ struct CardSimplesView: View {
                 .padding(14)
         }
         .accessibilityElement(children: .contain)
+        .task(id: dados.spot?.proprietarioID) {
+            guard dados.tipo == .evento,
+                  let usuarioID = dados.spot?.proprietarioID else { return }
+            _ = await sessao.carregarFotoPublicador(usuarioID)
+        }
     }
 
     private var conteudo: some View {
@@ -275,6 +294,7 @@ struct CardSimplesView: View {
         case let .proprietario(
             estaAtivo,
             estaProcessando,
+            podeAlterar,
             aoAlternar
         ):
             Toggle(
@@ -289,8 +309,10 @@ struct CardSimplesView: View {
             )
             .labelsHidden()
             .tint(dados.tipo.corDestaque)
+            .disabled(estaProcessando)
             .accessibilityLabel("Oferta ativa")
             .accessibilityValue(estaAtivo ? "Ativada" : "Desativada")
+            .accessibilityHint(podeAlterar ? "" : "Edite a data do evento para anunciá-lo novamente")
             .frame(minWidth: 52, minHeight: 44)
         }
     }
@@ -425,6 +447,7 @@ private struct InfoCardSimples: View {
             modo: .proprietario(
                 estaAtivo: true,
                 estaProcessando: false,
+                podeAlterar: true,
                 aoAlternar: { _ in }
             ),
             aoSelecionar: { print("Abrir detalhes") }
@@ -447,6 +470,7 @@ private struct InfoCardSimples: View {
             modo: .proprietario(
                 estaAtivo: true,
                 estaProcessando: false,
+                podeAlterar: true,
                 aoAlternar: { _ in }
             ),
             aoSelecionar: { print("Abrir detalhes") }

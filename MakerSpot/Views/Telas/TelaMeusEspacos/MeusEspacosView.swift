@@ -11,6 +11,7 @@ struct MeusEspacosView: View {
     @State private var viewModel: MeusEspacosViewModel
     @State private var idParaExcluir: UUID?
     @State private var mostrarConfirmacaoExclusao = false
+    @State private var jaApareceu = false
 
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: MeusEspacosViewModel(sessao: sessao))
@@ -74,6 +75,11 @@ struct MeusEspacosView: View {
         .task {
             guard !viewModel.carregouDados else { return }
             await viewModel.carregar()
+        }
+        .onAppear {
+            defer { jaApareceu = true }
+            guard jaApareceu else { return }
+            Task { await viewModel.carregar() }
         }
         .alert(
             "Não foi possível carregar",
@@ -165,6 +171,7 @@ struct MeusEspacosView: View {
                     modo: .proprietario(
                         estaAtivo: spot.estaAtivo,
                         estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        podeAlterar: true,
                         aoAlternar: { novoValor in
                             Task {
                                 await viewModel.definirAtivo(

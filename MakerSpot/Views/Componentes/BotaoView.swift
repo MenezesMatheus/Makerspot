@@ -7,21 +7,38 @@
 
 import SwiftUI
 
+struct BotaoIconeToolbar: View {
+    let titulo: String
+    let simbolo: String
+    var estaProcessando = false
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            Group {
+                if estaProcessando {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: simbolo)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .background(Color.accentColor, in: Circle())
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(titulo)
+    }
+}
+
 struct BotaoAdicionarToolbar: View {
     let titulo: String
     let acao: () -> Void
 
     var body: some View {
-        Button(action: acao) {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.accentColor, in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(titulo)
+        BotaoIconeToolbar(titulo: titulo, simbolo: "plus", acao: acao)
     }
 }
 

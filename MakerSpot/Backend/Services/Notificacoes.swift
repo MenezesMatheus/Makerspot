@@ -245,6 +245,22 @@ final class Notificacoes {
     func processarAlteracaoRemota(
         _ dados: [AnyHashable: Any]
     ) async throws -> Bool {
+        if let notificacao = CKNotification(
+            fromRemoteNotificationDictionary: dados
+        ) as? CKQueryNotification,
+        let identificador = notificacao.subscriptionID,
+        IdentificadorCloudKit.usuarioDaAssinaturaSpotRestrito(
+            identificador
+        ) != nil {
+            if let textoID = Self.texto(
+                notificacao.recordFields?[CampoCloudKit.SpotRestrito.spotID]
+            ), let spotID = UUID(uuidString: textoID) {
+                cancelarLembretes(spotID: spotID, papel: .organizador)
+                cancelarLembretes(spotID: spotID, papel: .salvo)
+            }
+            return true
+        }
+
         if let alerta = interpretarAlertaModeracao(dados) {
             if alerta.tipoConteudo == .evento,
                let eventoID = alerta.conteudoID {

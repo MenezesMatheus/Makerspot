@@ -28,6 +28,17 @@ DEFINE SCHEMA
         criadoEm TIMESTAMP
     );
 
+    RECORD TYPE FotoPerfilPublica (
+        "___recordID" REFERENCE QUERYABLE,
+        usuarioID STRING,
+        fotoID STRING,
+        arquivo ASSET,
+        atualizadoEm TIMESTAMP,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE, READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
     RECORD TYPE SpotSalvo (
         "___recordID" REFERENCE QUERYABLE,
         id STRING SORTABLE,
@@ -136,4 +147,13 @@ DEFINE SCHEMA
         criadoEm TIMESTAMP SORTABLE,
         GRANT READ TO "_icloud",
         GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
+    RECORD TYPE SpotRestrito (
+        "___recordID" REFERENCE QUERYABLE,
+        spotID STRING QUERYABLE,
+        proprietarioID STRING QUERYABLE,
+        nomeSpot STRING,
+        status STRING QUERYABLE,
+        GRANT READ TO "_icloud"
     );

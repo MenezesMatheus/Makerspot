@@ -24,21 +24,18 @@ final class CoordenadorNotificacoes {
     func configurar(sessao: SessaoUsuario) async {
         guard let usuario = sessao.usuarioAtual else { return }
 
+        try? await assinaturasModeracao.garantirAssinatura(
+            para: usuario.id
+        )
+        try? await assinaturasModeracao.garantirAssinaturaSpotsRestritos(
+            para: usuario.id
+        )
+
         do {
             let autorizada = try await notificacoes.prepararSistema()
             guard autorizada else { return }
 
-            try? await assinaturasModeracao.garantirAssinatura(
-                para: usuario.id
-            )
-
-            if let salvos = try? await SalvosCRUD(sessao: sessao)
-                .listarComSpots() {
-                try? await notificacoes.sincronizarLembretes(
-                    eventos: salvos.map(\.spot),
-                    papel: .salvo
-                )
-            }
+            sessao.salvosLocais.atualizarEmSegundoPlano()
 
             if let eventosDoUsuario = try? await SpotCRUD(sessao: sessao)
                 .listarDoUsuarioAtual(tipo: .evento) {

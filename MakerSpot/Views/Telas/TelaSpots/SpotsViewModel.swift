@@ -19,8 +19,6 @@ final class SpotsViewModel {
     private(set) var spots: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
-    private(set) var estaSincronizandoSalvos = false
-    private(set) var spotsEmAlteracao: Set<UUID> = []
     private(set) var podeCarregarMais = true
     private(set) var mensagemDeErro: String?
     private(set) var quantidadeRegistrosIgnorados = 0
@@ -38,10 +36,8 @@ final class SpotsViewModel {
     private(set) var carregouPrimeiraPagina = false
 
     var eventosEmDestaque: [Spot] {
-        let agora = Date()
         let eventosDisponiveis = spots.filter { spot in
-            guard case .evento(let evento) = spot.detalhes else { return false }
-            return evento.termino >= agora
+            spot.tipo == .evento && spot.estaDisponivel()
         }
 
         return Array(eventosDisponiveis.sorted(by: ordenarEventos).prefix(3))
@@ -90,9 +86,10 @@ final class SpotsViewModel {
     }
 
     func encerrarCadastro() {
-        if let spot = cadastro?.spotCriado {
+        if let spot = cadastro?.spotCriado, spot.estaDisponivel() {
+            let atualizado = alteracoes?.spots[spot.id] ?? spot
             spots.removeAll { $0.id == spot.id }
-            spots.insert(spot, at: 0)
+            spots.insert(atualizado, at: 0)
             identificadoresCarregados.insert(spot.id)
         }
         cadastro = nil
@@ -119,7 +116,53 @@ final class SpotsViewModel {
     }
 
     func recarregar() async {
-        await carregarPrimeiraPagina(tipo: tipoSelecionado)
+        guard carregouPrimeiraPagina else {
+            await carregarPrimeiraPagina(tipo: tipoSelecionado)
+            return
+        }
+        guard !estaCarregando else { return }
+        estaCarregando = true
+        mensagemDeErro = nil
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
+
+        do {
+            var novos: [Spot] = []
+            var novoCursor: CursorPaginaSpots?
+            var ignorados = 0
+            var paginasCarregadas = 0
+            repeat {
+                let pagina = try await crud.listarAtivos(
+                    tipo: tipoSelecionado,
+                    limite: tamanhoDaPagina,
+                    continuando: novoCursor
+                )
+                novos.append(contentsOf: pagina.spots)
+                ignorados += pagina.quantidadeRegistrosIgnorados
+                novoCursor = pagina.proximoCursor
+                paginasCarregadas += 1
+            } while novoCursor != nil
+                && paginasCarregadas < 3
+                && (novos.filter { $0.tipo == .evento }.count < 3
+                    || novos.filter { $0.tipo == .espaco }.count < 5)
+                && !Task.isCancelled
+
+            guard !Task.isCancelled else { return }
+            spots = novos
+            cursor = novoCursor
+            identificadoresCarregados = Set(novos.map(\.id))
+            quantidadeRegistrosIgnorados = ignorados
+            podeCarregarMais = novoCursor != nil
+            await sincronizarSalvos()
+        } catch ErroCloudKit.operacaoCancelada {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func carregarProximaPagina() async {
@@ -134,8 +177,6 @@ final class SpotsViewModel {
 
         do {
             let quantidadeAntes = spots.count
-            var paginasPercorridas = 0
-
             repeat {
                 let pagina = try await crud.listarAtivos(
                     tipo: tipoSelecionado,
@@ -149,10 +190,9 @@ final class SpotsViewModel {
                 }
                 quantidadeRegistrosIgnorados += pagina.quantidadeRegistrosIgnorados
                 cursor = pagina.proximoCursor
-                paginasPercorridas += 1
             } while spots.count == quantidadeAntes
                 && cursor != nil
-                && paginasPercorridas < 3
+                && !Task.isCancelled
 
             carregouPrimeiraPagina = true
             podeCarregarMais = cursor != nil
@@ -169,7 +209,6 @@ final class SpotsViewModel {
     func limpar() {
         redefinirPaginacao(tipo: nil)
         identificadoresSalvos = []
-        spotsEmAlteracao = []
         coordenadasDeReferencia = nil
         fotosSpots.limpar()
         podeCarregarMais = false
@@ -179,61 +218,29 @@ final class SpotsViewModel {
         identificadoresSalvos.contains(spot.id)
     }
 
-    func estaAlterandoSalvo(_ spot: Spot) -> Bool {
-        estaSincronizandoSalvos || spotsEmAlteracao.contains(spot.id)
-    }
-
     func podeSalvar(_ spot: Spot) -> Bool {
         guard let usuarioID = usuarioAtualID() else { return false }
         return spot.proprietarioID != usuarioID
     }
 
-    func alternarSalvo(do spot: Spot) async {
-        guard spots.contains(where: { $0.id == spot.id }),
-              podeSalvar(spot),
-              !estaSincronizandoSalvos,
-              spotsEmAlteracao.insert(spot.id).inserted else {
-            return
-        }
-
+    func alternarSalvo(do spot: Spot) {
+        guard spots.contains(where: { $0.id == spot.id }), podeSalvar(spot) else { return }
         mensagemDeErro = nil
-        defer { spotsEmAlteracao.remove(spot.id) }
-
-        let estavaSalvo = identificadoresSalvos.contains(spot.id)
-        if estavaSalvo {
-            identificadoresSalvos.remove(spot.id)
-        } else {
-            identificadoresSalvos.insert(spot.id)
-        }
-
         do {
-            if estavaSalvo {
-                try await salvosCRUD.dessalvar(spotID: spot.id)
-            } else {
-                _ = try await salvosCRUD.salvar(spotID: spot.id)
-            }
-        } catch ErroCloudKit.operacaoCancelada {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
-        } catch is CancellationError {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
+            try salvosCRUD.alternar(spot: spot)
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             mensagemDeErro = error.localizedDescription
-        }
-    }
-
-    private func restaurarEstadoSalvo(_ estavaSalvo: Bool, spotID: UUID) {
-        if estavaSalvo {
-            identificadoresSalvos.insert(spotID)
-        } else {
-            identificadoresSalvos.remove(spotID)
         }
     }
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func atualizarDisponibilidade() {
+        aplicarAlteracoes()
+        spots.removeAll { !$0.estaDisponivel() }
     }
 
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
@@ -246,28 +253,17 @@ final class SpotsViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
-        spots = alteracoes.consolidar(spots) { $0.estaAtivo && (tipoSelecionado == nil || $0.tipo == tipoSelecionado) }
-        let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
-        identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
-            .subtracting(spotsEmAlteracao).union(pendentesSalvos)
+        spots = alteracoes.consolidar(spots) {
+            $0.estaDisponivel() && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
+        }
+        if let salvos = try? salvosCRUD.listar() {
+            identificadoresSalvos = Set(salvos.map(\.spotID))
+        }
     }
 
     private func sincronizarSalvos() async {
-        guard !estaSincronizandoSalvos else { return }
-        estaSincronizandoSalvos = true
-        defer {
-            estaSincronizandoSalvos = false
-            aplicarAlteracoes()
-        }
-
         do {
-            identificadoresSalvos = Set(
-                try await salvosCRUD.listar().map(\.spotID)
-            )
-        } catch ErroCloudKit.operacaoCancelada {
-            return
-        } catch is CancellationError {
-            return
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
             mensagemDeErro = error.localizedDescription
         }

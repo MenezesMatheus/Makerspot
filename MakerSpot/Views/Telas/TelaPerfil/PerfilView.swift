@@ -7,14 +7,19 @@
 
 import SwiftUI
 import PhotosUI
+import Combine
 
 struct PerfilView: View {
     @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: PerfilViewModel
     @State private var itemSelecionado: PhotosPickerItem?
     @State private var mostrandoEdicaoPerfil = false
+    @State private var mostrarOpcoesFoto = false
+    @State private var mostrarSeletorFotos = false
     @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
+    @State private var agora = Date()
+    @State private var jaApareceu = false
 
     init(viewModel: PerfilViewModel) {
         self.viewModel = viewModel
@@ -43,21 +48,65 @@ struct PerfilView: View {
                     VStack {
                         // Foto + nome
                         HStack(spacing: 16) {
-                            PhotosPicker(selection: $itemSelecionado, matching: .images) {
+                            Button {
+                                if viewModel.fotoPerfil != nil {
+                                    mostrarOpcoesFoto = true
+                                } else {
+                                    mostrarSeletorFotos = true
+                                }
+                            } label: {
                                 fotoView
                             }
+                            .buttonStyle(.plain)
                             .disabled(viewModel.estaAlterandoFoto)
-                            .onChange(of: itemSelecionado) { _, novoItem in
-                                Task {
-                                    guard let novoItem else { return }
-                                    if let data = try? await novoItem.loadTransferable(type: Data.self) {
-                                        let url = FileManager.default.temporaryDirectory
-                                            .appendingPathComponent(UUID().uuidString + ".jpg")
-                                        try? data.write(to: url)
-                                        defer { try? FileManager.default.removeItem(at: url) }
-                                        await viewModel.definirFotoPerfil(arquivoURL: url)
+                            .accessibilityLabel(
+                                viewModel.fotoPerfil == nil
+                                    ? "Selecionar foto do perfil"
+                                    : "Opções da foto do perfil"
+                            )
+                            .photosPicker(
+                                isPresented: $mostrarSeletorFotos,
+                                selection: $itemSelecionado,
+                                matching: .images
+                            )
+                            .popover(
+                                isPresented: $mostrarOpcoesFoto,
+                                attachmentAnchor: .point(.bottom),
+                                arrowEdge: .top
+                            ) {
+                                VStack(spacing: 0) {
+                                    PhotosPicker(selection: $itemSelecionado, matching: .images) {
+                                        Label("Selecionar nova foto", systemImage: "photo")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(14)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.plain)
+
+                                    Divider()
+
+                                    Button(role: .destructive) {
+                                        mostrarOpcoesFoto = false
+                                        Task { await viewModel.removerFotoPerfil() }
+                                    } label: {
+                                        Label("Remover foto", systemImage: "trash")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(14)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.red)
                                 }
+                                .frame(width: 230)
+                                .presentationCompactAdaptation(.popover)
+                            }
+                            .onChange(of: itemSelecionado) { _, novoItem in
+                                if novoItem != nil { mostrarOpcoesFoto = false }
+                            }
+                            .task(id: itemSelecionado) {
+                                guard let item = itemSelecionado else { return }
+                                await viewModel.selecionarFoto(item)
+                                if itemSelecionado == item { itemSelecionado = nil }
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -123,6 +172,15 @@ struct PerfilView: View {
                     }
                 )
 
+                PopUpTextoView(
+                    estaApresentado: Binding(
+                        get: { viewModel.avisoAtivacao != nil },
+                        set: { if !$0 { viewModel.limparAvisoAtivacao() } }
+                    ),
+                    titulo: viewModel.avisoAtivacao?.titulo ?? "",
+                    subtitulo: viewModel.avisoAtivacao?.mensagem
+                )
+
                 if viewModel.estaExcluindoConta {
                     Color.black.opacity(0.3)
                         .ignoresSafeArea()
@@ -146,6 +204,15 @@ struct PerfilView: View {
             }
             .task {
                 await viewModel.carregar()
+            }
+            .onAppear {
+                agora = Date()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.carregar() }
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                agora = Date()
             }
             .refreshable {
                 await viewModel.carregar()
@@ -222,8 +289,9 @@ struct PerfilView: View {
                         imagem: imagem(do: spot)
                     ),
                     modo: .proprietario(
-                        estaAtivo: spot.estaAtivo,
+                        estaAtivo: spot.estaDisponivel(em: agora),
                         estaProcessando: viewModel.spotEmAlteracao == spot.id,
+                        podeAlterar: !spot.eventoEncerrado(em: agora),
                         aoAlternar: { estaAtivo in
                             Task {
                                 await viewModel.definirAtivo(

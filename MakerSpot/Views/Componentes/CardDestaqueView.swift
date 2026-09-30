@@ -24,6 +24,7 @@ struct CardEvento: View {
     let estaAlterandoSalvo: Bool
     let podeSalvar: Bool
     private let spotID: UUID?
+    private let spot: Spot?
     private let aoAlternarSalvo: () -> Void
 
     init(
@@ -36,7 +37,8 @@ struct CardEvento: View {
         estaAlterandoSalvo: Bool,
         podeSalvar: Bool,
         aoAlternarSalvo: @escaping () -> Void,
-        spotID: UUID? = nil
+        spotID: UUID? = nil,
+        spot: Spot? = nil
     ) {
         self.imagem = imagem
         self.tipo = tipo
@@ -47,6 +49,7 @@ struct CardEvento: View {
         self.estaAlterandoSalvo = estaAlterandoSalvo
         self.podeSalvar = podeSalvar
         self.spotID = spotID
+        self.spot = spot
         self.aoAlternarSalvo = aoAlternarSalvo
     }
 
@@ -69,7 +72,8 @@ struct CardEvento: View {
             estaAlterandoSalvo: estaAlterandoSalvo,
             podeSalvar: podeSalvar,
             aoAlternarSalvo: aoAlternarSalvo,
-            spotID: spot.id
+            spotID: spot.id,
+            spot: spot
         )
     }
 
@@ -165,7 +169,12 @@ struct CardEvento: View {
     private func abrirDetalhes<Conteudo: View>(@ViewBuilder conteudo: () -> Conteudo) -> some View {
         if let spotID {
             NavigationLink {
-                DetalhesSpotView(spotID: spotID, sessao: sessao)
+                DetalhesSpotView(
+                    spotID: spotID,
+                    sessao: sessao,
+                    spotInicial: spot,
+                    imagemInicialURL: imagem.arquivoURL
+                )
             } label: {
                 conteudo().contentShape(Rectangle())
             }

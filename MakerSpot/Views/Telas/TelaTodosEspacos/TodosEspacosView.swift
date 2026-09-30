@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TodosEspacosView: View {
     @State private var viewModel: TodosEspacosViewModel
+    @State private var jaApareceu = false
 
     init(sessao: SessaoUsuario) {
         _viewModel = State(initialValue: TodosEspacosViewModel(sessao: sessao))
@@ -60,6 +61,11 @@ struct TodosEspacosView: View {
         .task {
             guard !viewModel.carregouPrimeiraPagina else { return }
             await viewModel.carregarPrimeiraPagina()
+        }
+        .onAppear {
+            defer { jaApareceu = true }
+            guard jaApareceu else { return }
+            Task { await viewModel.recarregar() }
         }
         .alert(
             "Não foi possível carregar",
@@ -136,10 +142,10 @@ struct TodosEspacosView: View {
                     ),
                     modo: .visitante(
                         estaSalvo: viewModel.estaSalvo(spot),
-                        estaProcessando: viewModel.estaAlterandoSalvo(spot),
+                        estaProcessando: false,
                         podeSalvar: viewModel.podeSalvar(spot),
                         aoAlternar: {
-                            Task { await viewModel.alternarSalvo(do: spot) }
+                            viewModel.alternarSalvo(do: spot)
                         }
                     ),
                     aoSelecionar: {}

@@ -14,13 +14,21 @@ struct DetalhesSpotView: View {
     @State private var confirmarExclusao = false
     @State private var iniciouCarregamento = false
     private let sessao: SessaoUsuario
+    private let imagemInicialURL: URL?
 
-    init(spotID: UUID, sessao: SessaoUsuario) {
+    init(
+        spotID: UUID,
+        sessao: SessaoUsuario,
+        spotInicial: Spot? = nil,
+        imagemInicialURL: URL? = nil
+    ) {
         self.sessao = sessao
+        self.imagemInicialURL = imagemInicialURL
         _viewModel = State(
             initialValue: DetalhesSpotViewModel(
                 spotID: spotID,
-                sessao: sessao
+                sessao: sessao,
+                spotInicial: spotInicial
             )
         )
     }
@@ -42,7 +50,7 @@ struct DetalhesSpotView: View {
         .toolbar { barraDeAcoes }
         .sheet(item: $viewModelDenuncia) { denuncia in
             SheetReportarView(viewModel: denuncia)
-                .presentationDetents([.height(340)])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .navigationDestination(isPresented: $mostrarEditor) {
@@ -132,7 +140,11 @@ struct DetalhesSpotView: View {
 
                 CarrosselFotosSpot(
                     fotos: viewModel.fotos,
+                    fotoProvisoriaURL: imagemInicialURL,
                     estaCarregando: viewModel.estaCarregando
+                        && viewModel.fotos.isEmpty
+                        && imagemInicialURL == nil
+                        && !spot.fotoIDs.isEmpty
                 )
                 .padding(.bottom, 24)
 
@@ -194,13 +206,22 @@ struct DetalhesSpotView: View {
                 // MARK: - Publicador
 
                 HStack(spacing: 12) {
-                    Circle()
-                        .fill(.quaternary)
-                        .frame(width: 44, height: 44)
-                        .overlay {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(.secondary)
+                    Group {
+                        if let foto = viewModel.fotoPublicador,
+                           let imagem = UIImage(contentsOfFile: foto.arquivoURL.path) {
+                            Image(uiImage: imagem)
+                                .resizable()
+                                .scaledToFill()
+                        } else if !viewModel.fotoPublicadorCarregada {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(.quaternary, in: Circle())
+                        } else {
+                            imagemPadraoPublicador
                         }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(spot.nomePublicador)
@@ -218,6 +239,9 @@ struct DetalhesSpotView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
+                .task(id: spot.proprietarioID) {
+                    await viewModel.carregarFotoPublicador()
+                }
 
                 // MARK: - Divisor
 
@@ -239,6 +263,15 @@ struct DetalhesSpotView: View {
                 }
             }
         }
+    }
+
+    private var imagemPadraoPublicador: some View {
+        Circle()
+            .fill(.quaternary)
+            .overlay {
+                Image(systemName: "person.fill")
+                    .foregroundStyle(.secondary)
+            }
     }
 
     @ToolbarContentBuilder
@@ -269,7 +302,7 @@ struct DetalhesSpotView: View {
                     .labelStyle(.iconOnly)
 
                     Button {
-                        Task { await viewModel.alternarSalvo() }
+                        viewModel.alternarSalvo()
                     } label: {
                         Label(
                             viewModel.estaSalvo

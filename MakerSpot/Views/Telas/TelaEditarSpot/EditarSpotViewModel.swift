@@ -139,7 +139,7 @@ final class EditarSpotViewModel {
     var bloqueiaInteracao: Bool { estaOcupado || mostraPopup || deveFechar }
 
     var textoProgresso: String {
-        if estaImportandoFotos { return "Preparando fotos…" }
+        if estaImportandoFotos { return "Verificando fotos…" }
         if estaExcluindo { return "Excluindo Spot…" }
         return "Salvando alterações…"
     }
@@ -343,7 +343,7 @@ final class EditarSpotViewModel {
                         descricao: "Não foi possível ler a imagem selecionada."
                     )
                 }
-                let importada = try FotoImportadaCadastro.importar(dados)
+                let importada = try await FotoImportadaCadastro.importar(dados)
                 if Task.isCancelled {
                     apagarArquivos(da: importada.foto)
                     return

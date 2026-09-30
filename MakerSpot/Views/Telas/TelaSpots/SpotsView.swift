@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import Combine
 
 struct SpotsView: View {
     @Environment(SessaoUsuario.self) private var sessao
     @Bindable private var viewModel: SpotsViewModel
+    @State private var jaApareceu = false
 
     init(viewModel: SpotsViewModel) {
         self.viewModel = viewModel
@@ -34,7 +36,7 @@ struct SpotsView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    BotaoAdicionarToolbar(titulo: "Adicionar Spot") {
+                    BotaoIconeToolbar(titulo: "Adicionar Spot", simbolo: "plus") {
                         viewModel.iniciarCadastro()
                     }
                 }
@@ -51,6 +53,15 @@ struct SpotsView: View {
             .task {
                 guard !viewModel.carregouPrimeiraPagina else { return }
                 await viewModel.carregarPrimeiraPagina()
+            }
+            .onAppear {
+                viewModel.atualizarDisponibilidade()
+                defer { jaApareceu = true }
+                guard jaApareceu else { return }
+                Task { await viewModel.recarregar() }
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+                viewModel.atualizarDisponibilidade()
             }
             .alert(
                 "Não foi possível carregar os Spots",
@@ -119,10 +130,10 @@ struct SpotsView: View {
                                 spot: evento,
                                 imagem: imagem(do: evento),
                                 estaSalvo: viewModel.estaSalvo(evento),
-                                estaAlterandoSalvo: viewModel.estaAlterandoSalvo(evento),
+                                estaAlterandoSalvo: false,
                                 podeSalvar: viewModel.podeSalvar(evento),
                                 aoAlternarSalvo: {
-                                    Task { await viewModel.alternarSalvo(do: evento) }
+                                    viewModel.alternarSalvo(do: evento)
                                 }
                             )
                             .task(id: evento.fotoIDs) {
@@ -156,10 +167,10 @@ struct SpotsView: View {
                             ),
                             modo: .visitante(
                                 estaSalvo: viewModel.estaSalvo(espaco),
-                                estaProcessando: viewModel.estaAlterandoSalvo(espaco),
+                                estaProcessando: false,
                                 podeSalvar: viewModel.podeSalvar(espaco),
                                 aoAlternar: {
-                                    Task { await viewModel.alternarSalvo(do: espaco) }
+                                    viewModel.alternarSalvo(do: espaco)
                                 }
                             ),
                             aoSelecionar: {}

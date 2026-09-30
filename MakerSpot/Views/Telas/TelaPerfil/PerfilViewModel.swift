@@ -8,6 +8,8 @@
 import Foundation
 import Combine
 import Observation
+import PhotosUI
+import SwiftUI
 
 @MainActor
 @Observable
@@ -24,6 +26,7 @@ final class PerfilViewModel {
     private(set) var estaExcluindoConta = false
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
+    private(set) var avisoAtivacao: AvisoAtivacaoSpot?
 
     private let usuarioCRUD: UsuarioCRUD
     private let fotoCRUD: FotoCRUD
@@ -47,7 +50,7 @@ final class PerfilViewModel {
             usuarioCRUD: UsuarioCRUD(sessao: sessao),
             fotoCRUD: fotoCRUD,
             spotCRUD: SpotCRUD(sessao: sessao),
-            fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD)
+            fotosSpots: FotosSpotsViewModel(fotoCRUD: fotoCRUD, sessao: sessao)
         )
         usuario = sessao.usuarioAtual
         alteracoes = sessao.alteracoesSpots
@@ -76,9 +79,14 @@ final class PerfilViewModel {
         }
 
         do {
-            usuario = try await usuarioCRUD.buscarUsuarioAtual()
-            fotoPerfil = try await fotoCRUD.buscarFotoPerfilAtual()
-            let spots = try await spotCRUD.listarDoUsuarioAtual()
+            async let usuarioAtual = usuarioCRUD.buscarUsuarioAtual()
+            async let fotoAtual = fotoCRUD.buscarFotoPerfilAtual()
+            async let spotsAtuais = spotCRUD.listarDoUsuarioAtual()
+            let (usuarioCarregado, fotoCarregada, spots) = try await (
+                usuarioAtual, fotoAtual, spotsAtuais
+            )
+            usuario = usuarioCarregado
+            fotoPerfil = fotoCarregada
             eventos = spots.filter { $0.tipo == .evento }
             espacos = spots.filter { $0.tipo == .espaco }
         } catch is CancellationError {
@@ -88,13 +96,23 @@ final class PerfilViewModel {
         }
     }
 
-    func definirFotoPerfil(arquivoURL: URL) async {
+    func selecionarFoto(_ item: PhotosPickerItem) async {
         guard !estaAlterandoFoto else { return }
         estaAlterandoFoto = true
         mensagemDeErro = nil
         defer { estaAlterandoFoto = false }
 
         do {
+            guard let dados = try await item.loadTransferable(type: Data.self), !dados.isEmpty else {
+                throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível ler a foto selecionada.")
+            }
+            try await ModeracaoFotos().validarParaAnexar(dados)
+            try Task.checkCancellation()
+            let arquivoURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("imagem")
+            defer { try? FileManager.default.removeItem(at: arquivoURL) }
+            try dados.write(to: arquivoURL, options: .atomic)
             fotoPerfil = try await fotoCRUD.definirFotoPerfil(arquivoURL: arquivoURL)
             usuario = try await usuarioCRUD.buscarUsuarioAtual()
         } catch is CancellationError {
@@ -123,7 +141,6 @@ final class PerfilViewModel {
 
     func definirAtivo(_ estaAtivo: Bool, para spot: Spot) async {
         guard spotEmAlteracao == nil,
-              spot.estaAtivo != estaAtivo,
               eventos.contains(where: { $0.id == spot.id })
                 || espacos.contains(where: { $0.id == spot.id }) else {
             return
@@ -131,7 +148,26 @@ final class PerfilViewModel {
 
         spotEmAlteracao = spot.id
         mensagemDeErro = nil
+        avisoAtivacao = nil
         defer { spotEmAlteracao = nil }
+
+        if estaAtivo && spot.eventoEncerrado() {
+            do {
+                let restrito = try await spotCRUD.estaRestritoPelaModeracao(spot.id)
+                avisoAtivacao = restrito
+                    ? .restrito(nomeSpot: spot.nome)
+                    : .eventoEncerrado
+            } catch ErroCloudKit.operacaoCancelada {
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                mensagemDeErro = error.localizedDescription
+            }
+            return
+        }
+
+        guard spot.estaAtivo != estaAtivo else { return }
 
         var otimista = spot
         otimista.estaAtivo = estaAtivo
@@ -149,6 +185,9 @@ final class PerfilViewModel {
         } catch is CancellationError {
             substituir(spot)
             return
+        } catch ErroCRUD.spotRestrito {
+            substituir(spot)
+            avisoAtivacao = .restrito(nomeSpot: spot.nome)
         } catch {
             substituir(spot)
             mensagemDeErro = error.localizedDescription
@@ -217,6 +256,10 @@ final class PerfilViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func limparAvisoAtivacao() {
+        avisoAtivacao = nil
     }
 
     private func aplicarAlteracoes() {

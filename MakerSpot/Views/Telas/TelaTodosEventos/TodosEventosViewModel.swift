@@ -19,8 +19,6 @@ final class TodosEventosViewModel {
     private(set) var eventos: [Spot] = []
     private(set) var identificadoresSalvos: Set<UUID> = []
     private(set) var estaCarregando = false
-    private(set) var estaSincronizandoSalvos = false
-    private(set) var spotsEmAlteracao: Set<UUID> = []
     private(set) var podeCarregarMais = true
     private(set) var mensagemDeErro: String?
     private(set) var quantidadeRegistrosIgnorados = 0
@@ -76,14 +74,15 @@ final class TodosEventosViewModel {
         defer { cadastro = nil }
         guard let criado = cadastro?.spotCriado,
               criado.tipo == .evento,
-              criado.estaAtivo else {
+              criado.estaDisponivel() else {
             return
         }
 
+        let atualizado = alteracoes?.spots[criado.id] ?? criado
         if let indice = eventos.firstIndex(where: { $0.id == criado.id }) {
-            eventos[indice] = criado
+            eventos[indice] = atualizado
         } else {
-            eventos.insert(criado, at: 0)
+            eventos.insert(atualizado, at: 0)
             identificadoresCarregados.insert(criado.id)
         }
     }
@@ -96,7 +95,47 @@ final class TodosEventosViewModel {
     }
 
     func recarregar() async {
-        await carregarPrimeiraPagina()
+        guard carregouPrimeiraPagina else {
+            await carregarPrimeiraPagina()
+            return
+        }
+        guard !estaCarregando else { return }
+        estaCarregando = true
+        mensagemDeErro = nil
+        defer {
+            estaCarregando = false
+            aplicarAlteracoes()
+        }
+
+        do {
+            var novos: [Spot] = []
+            var novoCursor: CursorPaginaSpots?
+            var ignorados = 0
+            repeat {
+                let pagina = try await crud.listarAtivos(
+                    tipo: .evento,
+                    limite: tamanhoDaPagina,
+                    continuando: novoCursor
+                )
+                novos.append(contentsOf: pagina.spots)
+                ignorados += pagina.quantidadeRegistrosIgnorados
+                novoCursor = pagina.proximoCursor
+            } while novos.isEmpty && novoCursor != nil && !Task.isCancelled
+
+            guard !Task.isCancelled else { return }
+            eventos = novos
+            cursor = novoCursor
+            identificadoresCarregados = Set(novos.map(\.id))
+            quantidadeRegistrosIgnorados = ignorados
+            podeCarregarMais = novoCursor != nil
+            await sincronizarSalvos()
+        } catch ErroCloudKit.operacaoCancelada {
+            return
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func carregarProximaPagina() async {
@@ -111,8 +150,6 @@ final class TodosEventosViewModel {
 
         do {
             let quantidadeAntes = eventos.count
-            var paginasPercorridas = 0
-
             repeat {
                 let pagina = try await crud.listarAtivos(
                     tipo: .evento,
@@ -126,10 +163,9 @@ final class TodosEventosViewModel {
                 }
                 quantidadeRegistrosIgnorados += pagina.quantidadeRegistrosIgnorados
                 cursor = pagina.proximoCursor
-                paginasPercorridas += 1
             } while eventos.count == quantidadeAntes
                 && cursor != nil
-                && paginasPercorridas < 3
+                && !Task.isCancelled
 
             carregouPrimeiraPagina = true
             podeCarregarMais = cursor != nil
@@ -146,7 +182,6 @@ final class TodosEventosViewModel {
     func limpar() {
         redefinirPaginacao()
         identificadoresSalvos = []
-        spotsEmAlteracao = []
         fotosSpots.limpar()
         podeCarregarMais = false
     }
@@ -155,61 +190,29 @@ final class TodosEventosViewModel {
         identificadoresSalvos.contains(spot.id)
     }
 
-    func estaAlterandoSalvo(_ spot: Spot) -> Bool {
-        estaSincronizandoSalvos || spotsEmAlteracao.contains(spot.id)
-    }
-
     func podeSalvar(_ spot: Spot) -> Bool {
         guard let usuarioID = usuarioAtualID() else { return false }
         return spot.proprietarioID != usuarioID
     }
 
-    func alternarSalvo(do spot: Spot) async {
-        guard eventos.contains(where: { $0.id == spot.id }),
-              podeSalvar(spot),
-              !estaSincronizandoSalvos,
-              spotsEmAlteracao.insert(spot.id).inserted else {
-            return
-        }
-
+    func alternarSalvo(do spot: Spot) {
+        guard eventos.contains(where: { $0.id == spot.id }), podeSalvar(spot) else { return }
         mensagemDeErro = nil
-        defer { spotsEmAlteracao.remove(spot.id) }
-
-        let estavaSalvo = identificadoresSalvos.contains(spot.id)
-        if estavaSalvo {
-            identificadoresSalvos.remove(spot.id)
-        } else {
-            identificadoresSalvos.insert(spot.id)
-        }
-
         do {
-            if estavaSalvo {
-                try await salvosCRUD.dessalvar(spotID: spot.id)
-            } else {
-                _ = try await salvosCRUD.salvar(spotID: spot.id)
-            }
-        } catch ErroCloudKit.operacaoCancelada {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
-        } catch is CancellationError {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
-            return
+            try salvosCRUD.alternar(spot: spot)
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
-            restaurarEstadoSalvo(estavaSalvo, spotID: spot.id)
             mensagemDeErro = error.localizedDescription
-        }
-    }
-
-    private func restaurarEstadoSalvo(_ estavaSalvo: Bool, spotID: UUID) {
-        if estavaSalvo {
-            identificadoresSalvos.insert(spotID)
-        } else {
-            identificadoresSalvos.remove(spotID)
         }
     }
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func atualizarDisponibilidade() {
+        aplicarAlteracoes()
+        eventos.removeAll { !$0.estaDisponivel() }
     }
 
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
@@ -222,28 +225,17 @@ final class TodosEventosViewModel {
 
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
-        eventos = alteracoes.consolidar(eventos) { $0.estaAtivo && $0.tipo == .evento }
-        let pendentesSalvos = identificadoresSalvos.intersection(spotsEmAlteracao)
-        identificadoresSalvos = alteracoes.consolidarSalvos(identificadoresSalvos)
-            .subtracting(spotsEmAlteracao).union(pendentesSalvos)
+        eventos = alteracoes.consolidar(eventos) {
+            $0.estaDisponivel() && $0.tipo == .evento
+        }
+        if let salvos = try? salvosCRUD.listar() {
+            identificadoresSalvos = Set(salvos.map(\.spotID))
+        }
     }
 
     private func sincronizarSalvos() async {
-        guard !estaSincronizandoSalvos else { return }
-        estaSincronizandoSalvos = true
-        defer {
-            estaSincronizandoSalvos = false
-            aplicarAlteracoes()
-        }
-
         do {
-            identificadoresSalvos = Set(
-                try await salvosCRUD.listar().map(\.spotID)
-            )
-        } catch ErroCloudKit.operacaoCancelada {
-            return
-        } catch is CancellationError {
-            return
+            identificadoresSalvos = Set(try salvosCRUD.listar().map(\.spotID))
         } catch {
             mensagemDeErro = error.localizedDescription
         }

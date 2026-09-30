@@ -15,9 +15,10 @@ final class DetalhesSpotViewModel {
     @ObservationIgnored private var observacaoAlteracoes: AnyCancellable?
     private(set) var spot: Spot?
     private(set) var fotos: [FotoDisponivel] = []
+    private(set) var fotoPublicador: FotoDisponivel?
+    private(set) var fotoPublicadorCarregada = false
     private(set) var estaSalvo = false
     private(set) var estaCarregando = false
-    private(set) var estaAlterandoSalvo = false
     private(set) var estaExcluindo = false
     private(set) var carregouEstadoSalvo = false
     private(set) var mensagemDeErro: String?
@@ -44,7 +45,8 @@ final class DetalhesSpotViewModel {
         fotoCRUD: FotoCRUD,
         salvosCRUD: SalvosCRUD,
         localizacao: ServicoLocalizacao,
-        notificacoes: Notificacoes
+        notificacoes: Notificacoes,
+        spotInicial: Spot? = nil
     ) {
         self.spotID = spotID
         self.sessao = sessao
@@ -53,13 +55,25 @@ final class DetalhesSpotViewModel {
         self.salvosCRUD = salvosCRUD
         self.localizacao = localizacao
         self.notificacoes = notificacoes
+        self.spot = spotInicial ?? sessao.alteracoesSpots.spots[spotID]
+        if let spot = self.spot {
+            self.fotos = sessao.fotosEmCache(para: spot) ?? []
+            self.fotoPublicador = sessao.fotoPublicadorEmCache(spot.proprietarioID)
+            self.fotoPublicadorCarregada = self.fotoPublicador != nil
+        }
+        do {
+            estaSalvo = try salvosCRUD.estaSalvo(spotID: spotID)
+            carregouEstadoSalvo = true
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
         observacaoAlteracoes = sessao.alteracoesSpots.atualizacoes.sink { [weak self] in
             self?.aplicarAlteracoes()
         }
         aplicarAlteracoes()
     }
 
-    convenience init(spotID: UUID, sessao: SessaoUsuario) {
+    convenience init(spotID: UUID, sessao: SessaoUsuario, spotInicial: Spot? = nil) {
         self.init(
             spotID: spotID,
             sessao: sessao,
@@ -67,12 +81,13 @@ final class DetalhesSpotViewModel {
             fotoCRUD: FotoCRUD(sessao: sessao),
             salvosCRUD: SalvosCRUD(sessao: sessao),
             localizacao: ServicoLocalizacao(),
-            notificacoes: Notificacoes()
+            notificacoes: Notificacoes(),
+            spotInicial: spotInicial
         )
     }
 
     func carregar() async {
-        guard !estaCarregando, !estaAlterandoSalvo, !estaExcluindo else { return }
+        guard !estaCarregando, !estaExcluindo else { return }
         estaCarregando = true
         mensagemDeErro = nil
         defer {
@@ -80,9 +95,11 @@ final class DetalhesSpotViewModel {
             aplicarAlteracoes()
         }
 
-        carregouEstadoSalvo = false
         do {
-            spot = try await spotCRUD.buscar(id: spotID)
+            let remoto = try await spotCRUD.buscar(id: spotID)
+            if remoto.versao >= (spot?.versao ?? 0) {
+                spot = remoto
+            }
         } catch ErroCloudKit.registroNaoEncontrado {
             spot = nil
             fotos = []
@@ -100,14 +117,15 @@ final class DetalhesSpotViewModel {
         guard let spot else { return }
         // Falhas de fotos e salvos são independentes: uma não deve impedir a outra.
         do {
+            try salvosCRUD.atualizarSnapshot(spot)
             if ehProprietario {
                 estaSalvo = false
             } else {
-                estaSalvo = try await salvosCRUD.estaSalvo(spotID: spot.id)
+                estaSalvo = try salvosCRUD.estaSalvo(spotID: spot.id)
             }
             carregouEstadoSalvo = true
             if estaSalvo {
-                _ = try await salvosCRUD.marcarComoVisualizado(spotID: spot.id)
+                _ = try salvosCRUD.marcarComoVisualizado(spotID: spot.id)
             }
         } catch ErroCloudKit.operacaoCancelada {
             return
@@ -118,7 +136,17 @@ final class DetalhesSpotViewModel {
         }
 
         do {
-            fotos = try await fotoCRUD.buscarFotos(para: spot)
+            if let guardadas = sessao.fotosEmCache(para: spot) {
+                if self.spot?.fotoIDs == spot.fotoIDs {
+                    fotos = guardadas
+                }
+            } else {
+                let carregadas = try await fotoCRUD.buscarFotos(para: spot)
+                if self.spot?.fotoIDs == spot.fotoIDs {
+                    fotos = carregadas
+                    sessao.guardarFotosEmCache(carregadas, para: spot)
+                }
+            }
         } catch ErroCloudKit.operacaoCancelada {
             return
         } catch is CancellationError {
@@ -130,31 +158,22 @@ final class DetalhesSpotViewModel {
         estadoNotificacoes = await notificacoes.verificarPermissao()
     }
 
-    func alternarSalvo() async {
-        guard let spot, !ehProprietario, carregouEstadoSalvo,
-              !estaCarregando, !estaAlterandoSalvo, !estaExcluindo else { return }
-        estaAlterandoSalvo = true
+    func carregarFotoPublicador() async {
+        guard let spot else {
+            fotoPublicador = nil
+            fotoPublicadorCarregada = true
+            return
+        }
+        fotoPublicador = await sessao.carregarFotoPublicador(spot.proprietarioID)
+        fotoPublicadorCarregada = true
+    }
+
+    func alternarSalvo() {
+        guard let spot, !ehProprietario, carregouEstadoSalvo, !estaExcluindo else { return }
         mensagemDeErro = nil
-        defer { estaAlterandoSalvo = false }
-
-        let estavaSalvo = estaSalvo
-        estaSalvo.toggle()
-
         do {
-            if estavaSalvo {
-                try await salvosCRUD.dessalvar(spotID: spot.id)
-            } else {
-                _ = try await salvosCRUD.salvar(spotID: spot.id)
-                await prepararNotificacoes()
-            }
-        } catch ErroCloudKit.operacaoCancelada {
-            estaSalvo = estavaSalvo
-            return
-        } catch is CancellationError {
-            estaSalvo = estavaSalvo
-            return
+            estaSalvo = try salvosCRUD.alternar(spot: spot)
         } catch {
-            estaSalvo = estavaSalvo
             mensagemDeErro = error.localizedDescription
         }
     }
@@ -167,7 +186,7 @@ final class DetalhesSpotViewModel {
     @discardableResult
     func excluir() async -> Bool {
         guard spot != nil, ehProprietario, !estaCarregando,
-              !estaAlterandoSalvo, !estaExcluindo else { return false }
+              !estaExcluindo else { return false }
         estaExcluindo = true
         mensagemDeErro = nil
         defer { estaExcluindo = false }
@@ -175,6 +194,7 @@ final class DetalhesSpotViewModel {
             try await spotCRUD.excluir(id: spotID)
             spot = nil
             fotos = []
+            sessao.removerFotosEmCache(do: spotID)
             return true
         } catch ErroCloudKit.operacaoCancelada {
             return false
@@ -265,14 +285,9 @@ final class DetalhesSpotViewModel {
            atualizado.versao >= (spot?.versao ?? 0), atualizado != spot {
             receberAtualizacao(atualizado)
         }
-        if !estaAlterandoSalvo {
-            if alteracoes.salvos[spotID] != nil {
-                estaSalvo = true
-                carregouEstadoSalvo = true
-            } else if alteracoes.removidosDosSalvos.contains(spotID) {
-                estaSalvo = false
-                carregouEstadoSalvo = true
-            }
+        if let salvo = try? salvosCRUD.estaSalvo(spotID: spotID) {
+            estaSalvo = salvo
+            carregouEstadoSalvo = true
         }
     }
 
@@ -281,7 +296,6 @@ final class DetalhesSpotViewModel {
         let fotosMudaram = spot?.fotoIDs != spotAtualizado.fotoIDs
         spot = spotAtualizado
         guard fotosMudaram else { return }
-        fotos = []
         Task { await carregarFotosAtualizadas() }
     }
 
@@ -291,6 +305,7 @@ final class DetalhesSpotViewModel {
             let carregadas = try await fotoCRUD.buscarFotos(para: spot)
             guard self.spot?.fotoIDs == spot.fotoIDs else { return }
             fotos = carregadas
+            sessao.guardarFotosEmCache(carregadas, para: spot)
         } catch is CancellationError {
             return
         } catch {

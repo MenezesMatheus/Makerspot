@@ -40,7 +40,11 @@ final class UsuarioCRUD {
         let identificadorCloudKit = try await cliente.verificarConta()
         try await autorizacao.validarUsuarioAtivo(
             appleUserID: identificadorApple,
-            cloudKitUserRecordName: identificadorCloudKit.recordName
+            cloudKitUserRecordName: identificadorCloudKit.recordName,
+            usuarioID: identificadorDeterministico(
+                appleUserID: identificadorApple,
+                cloudKitUserRecordName: identificadorCloudKit.recordName
+            )
         )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
@@ -110,6 +114,7 @@ final class UsuarioCRUD {
         }
 
         try sessao.iniciar(com: usuario)
+        sincronizarFotoPublicaSeNecessario(do: usuario)
         return usuario
     }
 
@@ -129,7 +134,11 @@ final class UsuarioCRUD {
         let identificadorCloudKit = try await cliente.verificarConta()
         try await autorizacao.validarUsuarioAtivo(
             appleUserID: identificadorApple,
-            cloudKitUserRecordName: identificadorCloudKit.recordName
+            cloudKitUserRecordName: identificadorCloudKit.recordName,
+            usuarioID: identificadorDeterministico(
+                appleUserID: identificadorApple,
+                cloudKitUserRecordName: identificadorCloudKit.recordName
+            )
         )
         let encontrado = try await buscarUsuario(
             appleUserID: identificadorApple,
@@ -146,6 +155,7 @@ final class UsuarioCRUD {
         }
 
         sessao.restaurar(encontrado.usuario)
+        sincronizarFotoPublicaSeNecessario(do: encontrado.usuario)
         return encontrado.usuario
     }
 
@@ -174,7 +184,8 @@ final class UsuarioCRUD {
         do {
             try await autorizacao.validarUsuarioAtivo(
                 appleUserID: usuario.appleUserID,
-                cloudKitUserRecordName: identificadorCloudKit.recordName
+                cloudKitUserRecordName: identificadorCloudKit.recordName,
+                usuarioID: usuario.id
             )
         } catch ErroCRUD.usuarioBanido {
             if sessao.usuarioAtual?.id == usuario.id {
@@ -208,6 +219,11 @@ final class UsuarioCRUD {
 
     func encerrarSessao() throws {
         try sessao.encerrar()
+    }
+
+    private func sincronizarFotoPublicaSeNecessario(do usuario: Usuario) {
+        guard sessao.usuarioAtual?.id == usuario.id else { return }
+        Task { _ = try? await FotoCRUD(sessao: sessao).buscarFotoPerfilAtual() }
     }
 
     func excluirConta() async throws {
@@ -254,7 +270,14 @@ final class UsuarioCRUD {
                 tipo: .fotoPerfil
             )
         }
+        // O registro público pode ainda não existir em ambientes sem o novo esquema.
+        try? await excluirSeExistir(
+            IdentificadorCloudKit.fotoPerfilPublica(usuarioID),
+            tipo: .fotoPerfilPublica
+        )
 
+        try sessao.salvosLocais.excluirDadosDaConta()
+        try? await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
         try await excluirSeExistir(
             IdentificadorCloudKit.usuario(contexto.usuario.id),
             tipo: .usuario

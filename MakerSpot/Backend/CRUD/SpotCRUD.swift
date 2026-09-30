@@ -34,6 +34,7 @@ final class SpotCRUD {
     private let localizacao: ServicoLocalizacao
     private let autorizacao: AutorizacaoCRUD
     private let notificacoes: Notificacoes
+    private let restricoes: SpotsRestritosCRUD
 
     init(
         cliente: ClienteCloudKit = ClienteCloudKit(),
@@ -46,11 +47,12 @@ final class SpotCRUD {
         self.localizacao = localizacao
         self.notificacoes = notificacoes
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
+        self.restricoes = SpotsRestritosCRUD(cliente: cliente)
     }
 
     func criar(_ dados: DadosSpot, id: UUID = UUID()) async throws -> Spot {
         let contexto = try await autorizacao.contextoAtual()
-        let dados = try ValidadorSpotCRUD.validarENormalizar(dados)
+        let dados = try ValidadorSpotCRUD.validarCadastro(dados)
         let coordenadas = try await localizacao.buscarCoordenadas(para: dados.endereco)
         let agora = Date()
         let spot = Spot(
@@ -135,11 +137,13 @@ final class SpotCRUD {
             )
         }
         try ApoioCRUD.exigirSemFalhas(pagina.falhas)
-        let spots = pagina.registros.compactMap { try? ApoioCRUD.spotValido(de: $0) }
+        let agora = Date()
+        let spotsValidos = pagina.registros.compactMap { try? ApoioCRUD.spotValido(de: $0) }
+        let spots = spotsValidos.filter { $0.estaDisponivel(em: agora) }
         return PaginaSpots(
             spots: spots,
             proximoCursor: pagina.proximoCursor.map { CursorPaginaSpots(valor: $0) },
-            quantidadeRegistrosIgnorados: pagina.registros.count - spots.count
+            quantidadeRegistrosIgnorados: pagina.registros.count - spotsValidos.count
         )
     }
 
@@ -183,6 +187,9 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
+        if try await restricoes.estaRestrito(id) {
+            throw ErroCRUD.spotRestrito
+        }
 
         let dados = try ValidadorSpotCRUD.validarENormalizar(dados)
         let coordenadas: Coordenadas
@@ -229,6 +236,19 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
+        if estaAtivo, try await restricoes.estaRestrito(id) {
+            throw ErroCRUD.spotRestrito
+        }
+        if estaAtivo, spot.fotoIDs.isEmpty {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Adicione ao menos uma foto antes de publicar o Spot."
+            )
+        }
+        if estaAtivo, spot.eventoEncerrado() {
+            throw ErroCRUD.dadosInvalidos(
+                descricao: "Atualize a data do evento antes de reativá-lo."
+            )
+        }
         guard spot.estaAtivo != estaAtivo else { return spot }
 
         spot.estaAtivo = estaAtivo
@@ -243,6 +263,11 @@ final class SpotCRUD {
         atualizarLembretesEmSegundoPlano(para: atualizado)
         alteracoes.atualizar(atualizado)
         return atualizado
+    }
+
+    func estaRestritoPelaModeracao(_ id: UUID) async throws -> Bool {
+        _ = try await autorizacao.contextoAtual()
+        return try await restricoes.estaRestrito(id)
     }
 
     func excluir(id: UUID) async throws {

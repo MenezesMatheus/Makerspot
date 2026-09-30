@@ -39,4 +39,13 @@ struct Spot: Identifiable, Codable, Equatable, Sendable {
         case .espaco: return .espaco
         }
     }
+
+    func eventoEncerrado(em data: Date = Date()) -> Bool {
+        guard case .evento(let evento) = detalhes else { return false }
+        return evento.termino <= data
+    }
+
+    func estaDisponivel(em data: Date = Date()) -> Bool {
+        estaAtivo && !eventoEncerrado(em: data)
+    }
 }

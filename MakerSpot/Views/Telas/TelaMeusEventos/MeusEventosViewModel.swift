@@ -29,6 +29,8 @@ final class MeusEventosViewModel {
     private(set) var carregouDados = false
     private(set) var spotEmAlteracao: UUID?
     private(set) var mensagemDeErro: String?
+    private(set) var avisoAtivacao: AvisoAtivacaoSpot?
+    private(set) var agora = Date()
     var filtroSelecionado: FiltroMeusEventos = .disponiveis
 
     private let crud: SpotCRUD
@@ -38,9 +40,9 @@ final class MeusEventosViewModel {
         eventos.filter { evento in
             switch filtroSelecionado {
             case .disponiveis:
-                return evento.estaAtivo
+                return evento.estaDisponivel(em: agora)
             case .indisponiveis:
-                return !evento.estaAtivo
+                return !evento.estaDisponivel(em: agora)
             }
         }
     }
@@ -79,10 +81,11 @@ final class MeusEventosViewModel {
             return
         }
 
+        let atualizado = alteracoes?.spots[criado.id] ?? criado
         if let indice = eventos.firstIndex(where: { $0.id == criado.id }) {
-            eventos[indice] = criado
+            eventos[indice] = atualizado
         } else {
-            eventos.insert(criado, at: 0)
+            eventos.insert(atualizado, at: 0)
         }
     }
 
@@ -107,11 +110,29 @@ final class MeusEventosViewModel {
 
     func definirAtivo(_ estaAtivo: Bool, para id: UUID) async {
         guard spotEmAlteracao == nil,
-              let anterior = eventos.first(where: { $0.id == id }),
-              anterior.estaAtivo != estaAtivo else { return }
+              let anterior = eventos.first(where: { $0.id == id }) else { return }
         spotEmAlteracao = id
         mensagemDeErro = nil
+        avisoAtivacao = nil
         defer { spotEmAlteracao = nil }
+
+        if estaAtivo && anterior.eventoEncerrado() {
+            do {
+                let restrito = try await crud.estaRestritoPelaModeracao(id)
+                avisoAtivacao = restrito
+                    ? .restrito(nomeSpot: anterior.nome)
+                    : .eventoEncerrado
+            } catch ErroCloudKit.operacaoCancelada {
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                mensagemDeErro = error.localizedDescription
+            }
+            return
+        }
+
+        guard anterior.estaAtivo != estaAtivo else { return }
 
         var otimista = anterior
         otimista.estaAtivo = estaAtivo
@@ -120,9 +141,15 @@ final class MeusEventosViewModel {
         do {
             let atualizado = try await crud.definirAtivo(estaAtivo, para: id)
             substituir(atualizado)
+        } catch ErroCloudKit.operacaoCancelada {
+            substituir(anterior)
+            return
         } catch is CancellationError {
             substituir(anterior)
             return
+        } catch ErroCRUD.spotRestrito {
+            substituir(anterior)
+            avisoAtivacao = .restrito(nomeSpot: anterior.nome)
         } catch {
             substituir(anterior)
             mensagemDeErro = error.localizedDescription
@@ -156,6 +183,14 @@ final class MeusEventosViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
+    }
+
+    func limparAvisoAtivacao() {
+        avisoAtivacao = nil
+    }
+
+    func atualizarDisponibilidade() {
+        agora = Date()
     }
 
     private func aplicarAlteracoes() {

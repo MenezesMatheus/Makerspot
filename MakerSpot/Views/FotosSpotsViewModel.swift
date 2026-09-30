@@ -14,21 +14,25 @@ final class FotosSpotsViewModel {
     private(set) var mensagemDeErro: String?
 
     private let fotoCRUD: FotoCRUD
+    @ObservationIgnored private var sessao: SessaoUsuario?
     @ObservationIgnored private var fotoIDsConhecidos: [UUID: [UUID]] = [:]
     @ObservationIgnored private var spotsSemFoto: Set<UUID> = []
     @ObservationIgnored private var requisicoes: [UUID: UUID] = [:]
 
-    init(fotoCRUD: FotoCRUD) {
+    init(fotoCRUD: FotoCRUD, sessao: SessaoUsuario? = nil) {
         self.fotoCRUD = fotoCRUD
+        self.sessao = sessao
     }
 
     convenience init(sessao: SessaoUsuario) {
-        self.init(fotoCRUD: FotoCRUD(sessao: sessao))
+        self.init(fotoCRUD: FotoCRUD(sessao: sessao), sessao: sessao)
     }
 
     func fotoPrincipal(do spot: Spot) -> FotoDisponivel? {
-        guard fotoIDsConhecidos[spot.id] == spot.fotoIDs else { return nil }
-        return fotosPrincipais[spot.id]
+        guard fotoIDsConhecidos[spot.id] == spot.fotoIDs else {
+            return sessao?.capaEmCache(para: spot)
+        }
+        return fotosPrincipais[spot.id] ?? sessao?.capaEmCache(para: spot)
     }
 
     func estaCarregando(_ spot: Spot) -> Bool {
@@ -42,6 +46,11 @@ final class FotosSpotsViewModel {
             fotosPrincipais[spot.id] = nil
             spotsSemFoto.remove(spot.id)
             fotoIDsConhecidos[spot.id] = spot.fotoIDs
+        }
+
+        if let guardada = sessao?.capaEmCache(para: spot) {
+            fotosPrincipais[spot.id] = guardada
+            return
         }
 
         guard !spot.fotoIDs.isEmpty else {
@@ -68,6 +77,7 @@ final class FotosSpotsViewModel {
             guard requisicoes[spot.id] == requisicao else { return }
             if let foto {
                 fotosPrincipais[spot.id] = foto
+                sessao?.guardarCapaEmCache(foto, para: spot)
             } else {
                 spotsSemFoto.insert(spot.id)
             }

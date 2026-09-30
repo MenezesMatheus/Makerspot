@@ -45,24 +45,19 @@ struct CadastrarSpotView: View {
         .navigationBarBackButtonHidden(viewModel.bloqueiaInteracao)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button {
+            ToolbarItem(placement: .topBarTrailing) {
+                BotaoIconeToolbar(
+                    titulo: viewModel.spotCriado == nil ? "Cadastrar \(viewModel.nomeTipo)" : "Concluir envio das fotos",
+                    simbolo: "checkmark",
+                    estaProcessando: viewModel.estaCadastrando
+                ) {
                     campoFocado = false
                     viewModel.solicitarConfirmacao()
-                } label: {
-                    if viewModel.estaCadastrando {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.white)
-                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .tint(.accentColor)
                 .disabled(!viewModel.podeCadastrar || viewModel.mostraPopup)
-                .accessibilityLabel(viewModel.spotCriado == nil ? "Cadastrar \(viewModel.nomeTipo)" : "Concluir envio das fotos")
+                .opacity(viewModel.mostraPopup ? 0.35 : 1)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .disabled(viewModel.bloqueiaInteracao)
         .accessibilityHidden(viewModel.mostraPopup)
@@ -76,8 +71,12 @@ struct CadastrarSpotView: View {
                 }
             )
             PopUpTextoView(
-                estaApresentado: $viewModel.mostraSucesso,
-                titulo: viewModel.tituloSucesso
+                estaApresentado: Binding(
+                    get: { viewModel.mensagemDeErro != nil },
+                    set: { if !$0 { viewModel.limparErro() } }
+                ),
+                titulo: "Não foi possível concluir",
+                subtitulo: viewModel.mensagemDeErro
             )
         }
         .interactiveDismissDisabled(viewModel.bloqueiaInteracao)
@@ -87,15 +86,10 @@ struct CadastrarSpotView: View {
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: viewModel.deveFechar) { _, deveFechar in
-            if deveFechar { dismiss() }
-        }
-        .alert("Cadastro de \(viewModel.nomeTipo)", isPresented: Binding(
-            get: { viewModel.mensagemDeErro != nil },
-            set: { if !$0 { viewModel.limparErro() } }
-        )) {
-            Button("OK", role: .cancel, action: viewModel.limparErro)
-        } message: {
-            Text(viewModel.mensagemDeErro ?? "")
+            if deveFechar {
+                dismiss()
+                viewModel.notificarCadastroConcluido()
+            }
         }
         .task(id: itensSelecionados) {
             await viewModel.importarFotos(itensSelecionados)
@@ -109,9 +103,11 @@ struct CadastrarSpotView: View {
 
         return Form {
             Section {
-                TextField("Título do \(viewModel.nomeTipo)", text: $viewModel.titulo)
-                    .fontWeight(.semibold)
-                    .accessibilityLabel("Título do \(viewModel.nomeTipo), obrigatório")
+                linhaObrigatoria(pendente: viewModel.tituloPendente) {
+                    TextField("Título do \(viewModel.nomeTipo) *", text: $viewModel.titulo)
+                        .fontWeight(.semibold)
+                        .accessibilityLabel("Título do \(viewModel.nomeTipo), obrigatório")
+                }
                 TextField("Descrição (opcional)", text: $viewModel.descricao, axis: .vertical)
                     .lineLimit(1...8)
             }
@@ -146,13 +142,6 @@ struct CadastrarSpotView: View {
                     .accessibilityElement(children: .combine)
                 }
                 .listRowBackground(Color.clear)
-            } else if viewModel.temFotosPendentes {
-                Section {
-                    Text("\(viewModel.nomeTipoCapitalizado) criado. Confirme para concluir o envio das fotos pendentes.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .listRowBackground(Color.clear)
             }
         }
         .formStyle(.grouped)
@@ -184,27 +173,46 @@ struct CadastrarSpotView: View {
 
         return Section {
             if viewModel.mostraEndereco {
-                TextField("Rua", text: $viewModel.endereco.logradouro)
-                    .textContentType(.streetAddressLine1)
-                    .accessibilityLabel("Rua, obrigatória")
-                TextField("Número", text: $viewModel.endereco.numero)
-                    .accessibilityLabel("Número, obrigatório. Use s/n se não houver número.")
+                linhaObrigatoria(pendente: viewModel.ruaPendente) {
+                    TextField("Rua *", text: $viewModel.endereco.logradouro)
+                        .textContentType(.streetAddressLine1)
+                        .accessibilityLabel("Rua, obrigatória")
+                }
+                linhaObrigatoria(pendente: viewModel.numeroPendente) {
+                    TextField("Número *", text: $viewModel.endereco.numero)
+                        .accessibilityLabel("Número, obrigatório. Use s/n se não houver número.")
+                }
                 TextField("Complemento (opcional)", text: textoOpcional($viewModel.endereco.complemento))
                     .textContentType(.streetAddressLine2)
-                TextField("Bairro", text: textoOpcional($viewModel.endereco.bairro))
-                    .textContentType(.sublocality)
-                TextField("Cidade", text: $viewModel.endereco.cidade)
-                    .textContentType(.addressCity)
-                    .accessibilityLabel("Cidade, obrigatória")
-                TextField("Estado", text: $viewModel.endereco.estado)
-                    .textContentType(.addressState)
-                    .accessibilityLabel("Estado, obrigatório")
-                TextField("CEP", text: textoOpcional($viewModel.endereco.codigoPostal))
-                    .textContentType(.postalCode)
-                    .textInputAutocapitalization(.characters)
-                Picker("País", selection: $viewModel.endereco.codigoPais) {
-                    ForEach(viewModel.paises) { pais in
-                        Text(pais.nome).tag(pais.codigo)
+                linhaObrigatoria(pendente: viewModel.bairroPendente) {
+                    TextField("Bairro *", text: textoOpcional($viewModel.endereco.bairro))
+                        .textContentType(.sublocality)
+                        .accessibilityLabel("Bairro, obrigatório")
+                }
+                linhaObrigatoria(pendente: viewModel.cidadePendente) {
+                    TextField("Cidade *", text: $viewModel.endereco.cidade)
+                        .textContentType(.addressCity)
+                        .accessibilityLabel("Cidade, obrigatória")
+                }
+                linhaObrigatoria(pendente: viewModel.estadoPendente) {
+                    TextField("Estado *", text: $viewModel.endereco.estado)
+                        .textContentType(.addressState)
+                        .accessibilityLabel("Estado, obrigatório")
+                }
+                linhaObrigatoria(pendente: viewModel.cepPendente) {
+                    TextField("CEP *", text: textoOpcional($viewModel.endereco.codigoPostal))
+                        .textContentType(.postalCode)
+                        .textInputAutocapitalization(.characters)
+                        .accessibilityLabel("CEP, obrigatório")
+                }
+                linhaObrigatoria(pendente: viewModel.paisPendente) {
+                    Picker(selection: $viewModel.endereco.codigoPais) {
+                        ForEach(viewModel.paises) { pais in
+                            Text(pais.nome).tag(pais.codigo)
+                        }
+                    } label: {
+                        Text("País *")
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Button(role: .destructive) { viewModel.mostraEndereco = false } label: {
@@ -212,10 +220,12 @@ struct CadastrarSpotView: View {
                         .foregroundStyle(Color.red)
                 }
             } else {
-                Button { viewModel.mostraEndereco = true } label: {
-                    rotuloAdicionar("Adicionar endereço")
+                linhaObrigatoria(pendente: viewModel.enderecoPendente) {
+                    Button { viewModel.mostraEndereco = true } label: {
+                        rotuloAdicionar("Adicionar endereço *")
+                    }
+                    .accessibilityHint("Obrigatório para cadastrar o \(viewModel.nomeTipo)")
                 }
-                .accessibilityHint("Obrigatório para cadastrar o \(viewModel.nomeTipo)")
             }
         }
     }
@@ -289,7 +299,7 @@ struct CadastrarSpotView: View {
                         ForEach(viewModel.fotos) { foto in
                             miniatura(foto)
                         }
-                        if viewModel.spotCriado == nil {
+                        if !viewModel.deveFechar {
                             seletorFotos(compacto: true)
                                 .frame(width: 120, height: 140)
                                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
@@ -300,8 +310,15 @@ struct CadastrarSpotView: View {
                 .scrollIndicators(.hidden)
             }
         } footer: {
-            Text("A primeira foto será a capa do \(viewModel.nomeTipo). Você pode adicionar quantas fotos quiser.")
-                .padding(.top, 16)
+            VStack(alignment: .leading, spacing: 4) {
+                if viewModel.fotoPendente {
+                    Text("Campo obrigatório")
+                        .foregroundStyle(.red)
+                }
+                Text("Adicione ao menos uma foto. A primeira será a capa do \(viewModel.nomeTipo).")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 16)
         }
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
@@ -318,7 +335,7 @@ struct CadastrarSpotView: View {
                 Image(systemName: "photo.badge.plus")
                     .font(compacto ? .title : .largeTitle)
                     .foregroundStyle(.secondary)
-                Text(compacto ? "Adicionar foto" : "Adicionar fotos")
+                Text(compacto ? "Adicionar foto" : "Adicionar fotos *")
                     .font(.headline)
                     .foregroundStyle(.primary)
             }
@@ -326,7 +343,7 @@ struct CadastrarSpotView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Adicionar fotos do \(viewModel.nomeTipo)")
+        .accessibilityLabel("Adicionar fotos do \(viewModel.nomeTipo), ao menos uma obrigatória")
     }
 
     private func miniatura(_ foto: FotoCadastroSpot) -> some View {
@@ -338,7 +355,7 @@ struct CadastrarSpotView: View {
                     .frame(width: 180, height: 140)
                     .clipped()
             }
-            if !viewModel.fotoFoiEnviada(foto) {
+            if !viewModel.deveFechar {
                 Button(role: .destructive) { viewModel.removerFoto(foto) } label: {
                     Image(systemName: "xmark")
                 }
@@ -368,6 +385,20 @@ struct CadastrarSpotView: View {
             Text(texto).fontWeight(.semibold).foregroundStyle(Color.primary)
         }
         .padding(.vertical, 4)
+    }
+
+    private func linhaObrigatoria<Conteudo: View>(
+        pendente: Bool,
+        @ViewBuilder conteudo: () -> Conteudo
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            conteudo()
+            if pendente {
+                Text("Campo obrigatório")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
     }
 
     private func botaoRemover(_ titulo: String, acao: @escaping () -> Void) -> some View {
@@ -405,15 +436,21 @@ private struct FuncionamentoEspacoView: View {
         if viewModel.horariosFuncionamento.isEmpty {
             Section {
                 Button(action: viewModel.adicionarHorario) {
-                    rotuloAdicionar("Dia e hora")
+                    rotuloAdicionar("Dia e hora *")
                 }
                 .accessibilityHint("Adicione os dias e horários de funcionamento do espaço")
+            } footer: {
+                if viewModel.funcionamentoPendente {
+                    Text("Campo obrigatório")
+                        .foregroundStyle(.red)
+                }
             }
         } else {
             ForEach($viewModel.horariosFuncionamento) { $horario in
                 SecaoHorarioEspaco(
                     horario: $horario,
                     fusoHorario: viewModel.fusoHorario,
+                    destacarDias: viewModel.mostrarPendencias,
                     aoSelecionarDias: { aoSelecionarDias(horario) },
                     aoRemover: { viewModel.removerHorario(id: horario.id) }
                 )
@@ -441,26 +478,34 @@ private struct FuncionamentoEspacoView: View {
 private struct SecaoHorarioEspaco: View {
     @Binding var horario: HorarioFuncionamentoCadastro
     let fusoHorario: TimeZone
+    let destacarDias: Bool
     let aoSelecionarDias: () -> Void
     let aoRemover: () -> Void
 
     var body: some View {
         Section {
-            Button(action: aoSelecionarDias) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        Text("Dias de funcionamento").foregroundStyle(Color.primary)
-                        Spacer(minLength: 0)
-                        resumoDias
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Dias de funcionamento").foregroundStyle(Color.primary)
-                        resumoDias
+            VStack(alignment: .leading, spacing: 4) {
+                Button(action: aoSelecionarDias) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) {
+                            Text("Dias de funcionamento *").foregroundStyle(Color.primary)
+                            Spacer(minLength: 0)
+                            resumoDias
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Dias de funcionamento *").foregroundStyle(Color.primary)
+                            resumoDias
+                        }
                     }
                 }
+                .accessibilityLabel("Dias de funcionamento")
+                .accessibilityValue(horario.resumoDias)
+                if destacarDias && horario.dias.isEmpty {
+                    Text("Campo obrigatório")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
-            .accessibilityLabel("Dias de funcionamento")
-            .accessibilityValue(horario.resumoDias)
 
             DatePicker("Começa", selection: $horario.abertura, displayedComponents: .hourAndMinute)
             DatePicker("Termina", selection: $horario.fechamento, displayedComponents: .hourAndMinute)
@@ -485,7 +530,7 @@ private struct SecaoHorarioEspaco: View {
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Color.white)
     }
 }
 

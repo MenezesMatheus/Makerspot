@@ -13,6 +13,11 @@ final class AlteracoesSpots {
     private(set) var salvos: [UUID: ItemSpotSalvo] = [:]
     private(set) var removidosDosSalvos: Set<UUID> = []
     var exclusaoConfirmada: UUID?
+    private(set) var cadastroConfirmado: Spot?
+
+    func confirmarCadastro(_ spot: Spot) {
+        cadastroConfirmado = spot
+    }
 
     func atualizar(_ spot: Spot) {
         guard !excluidos.contains(spot.id),
@@ -43,6 +48,12 @@ final class AlteracoesSpots {
     func dessalvar(_ id: UUID) {
         salvos[id] = nil
         removidosDosSalvos.insert(id)
+        emissor.send()
+    }
+
+    func substituirSalvos(_ itens: [ItemSpotSalvo], removidos: Set<UUID>) {
+        salvos = Dictionary(itens.map { ($0.spot.id, $0) }, uniquingKeysWith: { _, novo in novo })
+        removidosDosSalvos = removidos
         emissor.send()
     }
 
@@ -92,5 +103,6 @@ final class AlteracoesSpots {
         salvos = [:]
         removidosDosSalvos = []
         exclusaoConfirmada = nil
+        cadastroConfirmado = nil
     }
 }

@@ -12,6 +12,8 @@ import UIKit
 struct SheetEditarPerfilView: View {
     @State private var viewModel: EditarPerfilViewModel
     @State private var itemFotoSelecionado: PhotosPickerItem?
+    @State private var mostrarOpcoesFoto = false
+    @State private var mostrarSeletorFotos = false
     @State private var confirmarAlteracoes = false
     @State private var confirmarSaida = false
     @State private var confirmarExclusao = false
@@ -150,7 +152,8 @@ struct SheetEditarPerfilView: View {
                 }
             }
             .disabled(
-                confirmarAlteracoes
+                viewModel.estaVerificandoFoto
+                    || confirmarAlteracoes
                     || confirmarSaida
                     || confirmarExclusao
             )
@@ -241,9 +244,17 @@ struct SheetEditarPerfilView: View {
     }
 
     private var fotoPerfilEditavel: some View {
-        let estaCarregando = viewModel.estaCarregando
+        let estaCarregando = viewModel.estaCarregando || viewModel.estaVerificandoFoto
+        let possuiFoto = viewModel.novaFotoDados != nil
+            || (viewModel.fotoPerfil != nil && !viewModel.removerFotoAtual)
 
-        return PhotosPicker(selection: $itemFotoSelecionado, matching: .images) {
+        return Button {
+            if possuiFoto {
+                mostrarOpcoesFoto = true
+            } else {
+                mostrarSeletorFotos = true
+            }
+        } label: {
             ZStack(alignment: .bottomTrailing) {
                 conteudoFotoPerfil
                     .frame(width: 146, height: 146)
@@ -275,9 +286,47 @@ struct SheetEditarPerfilView: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Alterar foto do perfil")
+        .disabled(estaCarregando || viewModel.estaSalvando)
+        .accessibilityLabel(possuiFoto ? "Opções da foto do perfil" : "Selecionar foto do perfil")
+        .photosPicker(isPresented: $mostrarSeletorFotos, selection: $itemFotoSelecionado, matching: .images)
+        .popover(
+            isPresented: $mostrarOpcoesFoto,
+            attachmentAnchor: .point(.bottom),
+            arrowEdge: .top
+        ) {
+            VStack(spacing: 0) {
+                PhotosPicker(selection: $itemFotoSelecionado, matching: .images) {
+                    Label("Selecionar nova foto", systemImage: "photo")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Divider()
+
+                Button(role: .destructive) {
+                    mostrarOpcoesFoto = false
+                    viewModel.removerFoto()
+                } label: {
+                    Label("Remover foto", systemImage: "trash")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+            }
+            .frame(width: 230)
+            .presentationCompactAdaptation(.popover)
+        }
         .onChange(of: itemFotoSelecionado) { _, novoItem in
-            carregarFotoSelecionada(novoItem)
+            if novoItem != nil { mostrarOpcoesFoto = false }
+        }
+        .task(id: itemFotoSelecionado) {
+            guard let item = itemFotoSelecionado else { return }
+            await viewModel.selecionarFoto(item)
+            if itemFotoSelecionado == item { itemFotoSelecionado = nil }
         }
     }
 
@@ -288,7 +337,8 @@ struct SheetEditarPerfilView: View {
             Image(uiImage: imagem)
                 .resizable()
                 .scaledToFill()
-        } else if let fotoURL = viewModel.fotoPerfil?.arquivoURL,
+        } else if !viewModel.removerFotoAtual,
+                  let fotoURL = viewModel.fotoPerfil?.arquivoURL,
                   let imagem = UIImage(contentsOfFile: fotoURL.path) {
             Image(uiImage: imagem)
                 .resizable()
@@ -309,24 +359,6 @@ struct SheetEditarPerfilView: View {
                         endPoint: .bottom
                     )
                 )
-        }
-    }
-
-    private func carregarFotoSelecionada(_ item: PhotosPickerItem?) {
-        guard let item else { return }
-
-        Task {
-            do {
-                guard let dados = try await item.loadTransferable(type: Data.self),
-                      !dados.isEmpty else {
-                    throw ErroFotoPerfil.dadosIndisponiveis
-                }
-                viewModel.selecionarFoto(dados)
-            } catch is CancellationError {
-            } catch {
-                viewModel.registrarErroDaFoto(error)
-            }
-            itemFotoSelecionado = nil
         }
     }
 
@@ -404,13 +436,6 @@ struct SheetEditarPerfilView: View {
         case telefone
     }
 
-    private enum ErroFotoPerfil: LocalizedError {
-        case dadosIndisponiveis
-
-        var errorDescription: String? {
-            "Não foi possível ler a foto selecionada."
-        }
-    }
 }
 
 #Preview {

@@ -8,6 +8,19 @@
 import Foundation
 
 enum ValidadorSpotCRUD {
+    static func validarCadastro(_ dados: DadosSpot) throws -> DadosSpot {
+        let normalizado = try validarENormalizar(dados)
+        _ = try ApoioCRUD.textoObrigatorio(
+            normalizado.endereco.bairro ?? "",
+            nome: "o bairro"
+        )
+        _ = try ApoioCRUD.textoObrigatorio(
+            normalizado.endereco.codigoPostal ?? "",
+            nome: "o CEP"
+        )
+        return normalizado
+    }
+
     static func validarENormalizar(_ dados: DadosSpot) throws -> DadosSpot {
         var resultado = dados
         resultado.nome = try ApoioCRUD.textoObrigatorio(
