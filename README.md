@@ -84,7 +84,7 @@ O `ClienteCloudKit` concentra o acesso aos registros remotos. Os conversores tra
 
 ---
 
-## 🗃 Modelo de dados
+## Modelo de dados
 
 ```text
 Usuário ── publica ──< Spot ── pode ser ── Evento
