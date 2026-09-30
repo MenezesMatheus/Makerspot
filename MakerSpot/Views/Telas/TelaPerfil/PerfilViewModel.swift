@@ -8,6 +8,8 @@
 import Foundation
 import Combine
 import Observation
+import PhotosUI
+import SwiftUI
 
 @MainActor
 @Observable
@@ -94,13 +96,23 @@ final class PerfilViewModel {
         }
     }
 
-    func definirFotoPerfil(arquivoURL: URL) async {
+    func selecionarFoto(_ item: PhotosPickerItem) async {
         guard !estaAlterandoFoto else { return }
         estaAlterandoFoto = true
         mensagemDeErro = nil
         defer { estaAlterandoFoto = false }
 
         do {
+            guard let dados = try await item.loadTransferable(type: Data.self), !dados.isEmpty else {
+                throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível ler a foto selecionada.")
+            }
+            try await ModeracaoFotos().validarParaAnexar(dados)
+            try Task.checkCancellation()
+            let arquivoURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("imagem")
+            defer { try? FileManager.default.removeItem(at: arquivoURL) }
+            try dados.write(to: arquivoURL, options: .atomic)
             fotoPerfil = try await fotoCRUD.definirFotoPerfil(arquivoURL: arquivoURL)
             usuario = try await usuarioCRUD.buscarUsuarioAtual()
         } catch is CancellationError {

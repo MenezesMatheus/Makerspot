@@ -7,6 +7,8 @@
 
 import Foundation
 import Observation
+import PhotosUI
+import SwiftUI
 
 @MainActor
 @Observable
@@ -21,6 +23,7 @@ final class CriarContaViewModel {
     private(set) var fotoPerfil: FotoDisponivel?
     private(set) var estaCarregando = false
     private(set) var estaSalvando = false
+    private(set) var estaVerificandoFoto = false
     private(set) var mensagemDeErro: String?
 
     private let crud: UsuarioCRUD
@@ -31,6 +34,7 @@ final class CriarContaViewModel {
             && !textoNormalizado(sobrenome).isEmpty
             && !estaCarregando
             && !estaSalvando
+            && !estaVerificandoFoto
     }
 
     init(
@@ -71,17 +75,29 @@ final class CriarContaViewModel {
         }
     }
 
-    func selecionarFoto(_ dados: Data) {
-        guard !dados.isEmpty else {
-            mensagemDeErro = "Não foi possível ler a foto selecionada."
-            return
-        }
-        novaFotoDados = dados
-        removerFotoAtual = false
+    func selecionarFoto(_ item: PhotosPickerItem) async {
+        guard !estaVerificandoFoto, !estaSalvando else { return }
+        estaVerificandoFoto = true
         mensagemDeErro = nil
+        defer { estaVerificandoFoto = false }
+
+        do {
+            guard let dados = try await item.loadTransferable(type: Data.self), !dados.isEmpty else {
+                throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível ler a foto selecionada.")
+            }
+            try await ModeracaoFotos().validarParaAnexar(dados)
+            try Task.checkCancellation()
+            novaFotoDados = dados
+            removerFotoAtual = false
+        } catch is CancellationError {
+            return
+        } catch {
+            mensagemDeErro = error.localizedDescription
+        }
     }
 
     func removerFoto() {
+        guard !estaVerificandoFoto, !estaSalvando else { return }
         if novaFotoDados != nil {
             novaFotoDados = nil
         } else if fotoPerfil != nil {
@@ -133,10 +149,6 @@ final class CriarContaViewModel {
 
     func limparErro() {
         mensagemDeErro = nil
-    }
-
-    func registrarErroDaFoto(_ erro: Error) {
-        mensagemDeErro = erro.localizedDescription
     }
 
     private var mensagemDeValidacao: String {

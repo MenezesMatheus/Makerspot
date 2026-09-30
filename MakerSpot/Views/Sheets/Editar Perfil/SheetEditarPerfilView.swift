@@ -152,7 +152,8 @@ struct SheetEditarPerfilView: View {
                 }
             }
             .disabled(
-                confirmarAlteracoes
+                viewModel.estaVerificandoFoto
+                    || confirmarAlteracoes
                     || confirmarSaida
                     || confirmarExclusao
             )
@@ -243,7 +244,7 @@ struct SheetEditarPerfilView: View {
     }
 
     private var fotoPerfilEditavel: some View {
-        let estaCarregando = viewModel.estaCarregando
+        let estaCarregando = viewModel.estaCarregando || viewModel.estaVerificandoFoto
         let possuiFoto = viewModel.novaFotoDados != nil
             || (viewModel.fotoPerfil != nil && !viewModel.removerFotoAtual)
 
@@ -321,7 +322,11 @@ struct SheetEditarPerfilView: View {
         }
         .onChange(of: itemFotoSelecionado) { _, novoItem in
             if novoItem != nil { mostrarOpcoesFoto = false }
-            carregarFotoSelecionada(novoItem)
+        }
+        .task(id: itemFotoSelecionado) {
+            guard let item = itemFotoSelecionado else { return }
+            await viewModel.selecionarFoto(item)
+            if itemFotoSelecionado == item { itemFotoSelecionado = nil }
         }
     }
 
@@ -354,24 +359,6 @@ struct SheetEditarPerfilView: View {
                         endPoint: .bottom
                     )
                 )
-        }
-    }
-
-    private func carregarFotoSelecionada(_ item: PhotosPickerItem?) {
-        guard let item else { return }
-
-        Task {
-            do {
-                guard let dados = try await item.loadTransferable(type: Data.self),
-                      !dados.isEmpty else {
-                    throw ErroFotoPerfil.dadosIndisponiveis
-                }
-                viewModel.selecionarFoto(dados)
-            } catch is CancellationError {
-            } catch {
-                viewModel.registrarErroDaFoto(error)
-            }
-            itemFotoSelecionado = nil
         }
     }
 
@@ -449,13 +436,6 @@ struct SheetEditarPerfilView: View {
         case telefone
     }
 
-    private enum ErroFotoPerfil: LocalizedError {
-        case dadosIndisponiveis
-
-        var errorDescription: String? {
-            "Não foi possível ler a foto selecionada."
-        }
-    }
 }
 
 #Preview {

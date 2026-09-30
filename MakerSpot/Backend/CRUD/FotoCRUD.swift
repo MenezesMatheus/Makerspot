@@ -72,11 +72,11 @@ final class FotoCRUD {
     init(
         cliente: ClienteCloudKit = ClienteCloudKit(),
         sessao: SessaoUsuario,
-        moderacao: ModeracaoFotos = ModeracaoFotos(),
+        moderacao: ModeracaoFotos? = nil,
         gerenciadorArquivos: FileManager = .default
     ) {
         self.cliente = cliente
-        self.moderacao = moderacao
+        self.moderacao = moderacao ?? ModeracaoFotos()
         self.sessao = sessao
         self.autorizacao = AutorizacaoCRUD(cliente: cliente, sessao: sessao)
         self.gerenciadorArquivos = gerenciadorArquivos
@@ -114,9 +114,9 @@ final class FotoCRUD {
         if spot.fotoIDs.contains(fotoID) {
             return ResultadoEnvioFotoSpot(foto: foto, spotAtualizado: spot)
         }
+        try await validarSegurancaDaFoto(arquivoURL)
         let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
         defer { try? gerenciadorArquivos.removeItem(at: arquivoPreparado) }
-        try await validarSegurancaDaFoto(arquivoPreparado)
 
         let registroFoto = try ConversorRegistroCloudKit.registro(
             de: foto,
@@ -193,9 +193,9 @@ final class FotoCRUD {
 
         for arquivo in fotosAindaNaoVinculadas {
             try Task.checkCancellation()
+            try await validarSegurancaDaFoto(arquivo.arquivoURL)
             let preparado = try prepararImagemParaEnvio(arquivo.arquivoURL)
             do {
-                try await validarSegurancaDaFoto(preparado)
                 let foto = Foto(
                     id: arquivo.id,
                     enviadaPorID: contexto.usuario.id,
@@ -360,6 +360,7 @@ final class FotoCRUD {
     }
 
     func definirFotoPerfil(arquivoURL: URL) async throws -> FotoDisponivel {
+        try await validarSegurancaDaFoto(arquivoURL)
         let arquivoPreparado = try prepararImagemParaEnvio(arquivoURL)
         var manterArquivoTemporario = false
         defer {
@@ -367,8 +368,6 @@ final class FotoCRUD {
                 try? gerenciadorArquivos.removeItem(at: arquivoPreparado)
             }
         }
-
-        try await validarSegurancaDaFoto(arquivoPreparado)
 
         let contexto = try await autorizacao.contextoAtual()
         let registroUsuario = try await cliente.buscar(
@@ -763,19 +762,7 @@ final class FotoCRUD {
     }
 
     private func validarSegurancaDaFoto(_ arquivoURL: URL) async throws {
-        let triagem: ResultadoTriagemFoto
-        do {
-            triagem = try await moderacao.analisarImagem(em: arquivoURL)
-        } catch {
-            throw ErroCRUD.moderacaoLocalIndisponivel
-        }
-
-        switch triagem {
-        case .bloqueadaPorConteudoSensivel:
-            throw ErroCRUD.conteudoFotoNaoPermitido
-        case .analiseNaoHabilitadaNoSistema, .conteudoSensivelNaoDetectado:
-            return
-        }
+        try await moderacao.validarParaAnexar(em: arquivoURL)
     }
 
     private func salvarFotoSeNecessario(

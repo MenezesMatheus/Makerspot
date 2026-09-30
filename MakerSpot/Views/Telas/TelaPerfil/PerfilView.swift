@@ -102,17 +102,11 @@ struct PerfilView: View {
                             }
                             .onChange(of: itemSelecionado) { _, novoItem in
                                 if novoItem != nil { mostrarOpcoesFoto = false }
-                                Task {
-                                    guard let novoItem else { return }
-                                    if let data = try? await novoItem.loadTransferable(type: Data.self) {
-                                        let url = FileManager.default.temporaryDirectory
-                                            .appendingPathComponent(UUID().uuidString + ".jpg")
-                                        try? data.write(to: url)
-                                        defer { try? FileManager.default.removeItem(at: url) }
-                                        await viewModel.definirFotoPerfil(arquivoURL: url)
-                                    }
-                                    itemSelecionado = nil
-                                }
+                            }
+                            .task(id: itemSelecionado) {
+                                guard let item = itemSelecionado else { return }
+                                await viewModel.selecionarFoto(item)
+                                if itemSelecionado == item { itemSelecionado = nil }
                             }
 
                             VStack(alignment: .leading, spacing: 2) {

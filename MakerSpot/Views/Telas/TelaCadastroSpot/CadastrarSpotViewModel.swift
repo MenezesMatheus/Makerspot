@@ -21,7 +21,7 @@ struct FotoCadastroSpot: Identifiable, Equatable {
 struct FotoImportadaCadastro {
     let foto: FotoCadastroSpot
 
-    static func importar(_ dados: Data) throws -> Self {
+    static func importar(_ dados: Data) async throws -> Self {
         guard !dados.isEmpty, dados.count <= 30 * 1_024 * 1_024 else {
             throw ErroCRUD.dadosInvalidos(descricao: "Cada foto deve ter até 30 MB.")
         }
@@ -56,6 +56,8 @@ struct FotoImportadaCadastro {
 
         do {
             try dados.write(to: arquivo, options: .atomic)
+            // A foto só ganha miniatura e entra no formulário após a análise.
+            try await ModeracaoFotos().validarParaAnexar(em: arquivo)
             guard let imagem = CGImageSourceCreateThumbnailAtIndex(fonte, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
@@ -301,7 +303,7 @@ final class CadastrarSpotViewModel {
     var estaOcupado: Bool { estaCadastrando || estaImportandoFotos }
 
     var textoProgresso: String {
-        if estaImportandoFotos { return "Preparando fotos…" }
+        if estaImportandoFotos { return "Verificando fotos…" }
         return "Salvando \(nomeTipo)…"
     }
 
@@ -408,7 +410,7 @@ final class CadastrarSpotViewModel {
         return true
     }
 
-    func adicionarFoto(_ foto: FotoCadastroSpot) { fotos.append(foto) }
+    private func adicionarFoto(_ foto: FotoCadastroSpot) { fotos.append(foto) }
 
     func removerFoto(_ foto: FotoCadastroSpot) {
         guard !estaOcupado, !deveFechar else { return }
@@ -429,7 +431,7 @@ final class CadastrarSpotViewModel {
                 guard let dados = try await item.loadTransferable(type: Data.self) else {
                     throw ErroCRUD.dadosInvalidos(descricao: "Não foi possível ler a imagem selecionada.")
                 }
-                let importada = try FotoImportadaCadastro.importar(dados)
+                let importada = try await FotoImportadaCadastro.importar(dados)
                 if Task.isCancelled {
                     apagarArquivos(da: importada.foto)
                     return
