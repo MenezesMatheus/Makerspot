@@ -182,18 +182,6 @@ final class EditarPerfilViewModel {
     }
 
     @discardableResult
-    func sair() -> Bool {
-        mensagemDeErro = nil
-        do {
-            try crud.encerrarSessao()
-            return true
-        } catch {
-            mensagemDeErro = error.localizedDescription
-            return false
-        }
-    }
-
-    @discardableResult
     func excluirConta() async -> Bool {
         guard !estaExcluindoConta else { return false }
         estaExcluindoConta = true

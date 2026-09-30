@@ -5,61 +5,45 @@ import UIKit
 struct CarrosselFotosSpot: View {
     let fotos: [FotoDisponivel]
     var fotoProvisoriaURL: URL? = nil
-    var estaCarregando = false
 
-    var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
-                ForEach(0..<max(fotos.count, 3), id: \.self) { indice in
-                    Group {
-                        if fotos.indices.contains(indice),
-                           let imagem = UIImage(
-                            contentsOfFile: fotos[indice].arquivoURL.path
-                           ) {
-                            Image(uiImage: imagem)
-                                .resizable()
-                                .scaledToFill()
-                        } else if indice == 0,
-                                  let fotoProvisoriaURL,
-                                  let imagem = UIImage(contentsOfFile: fotoProvisoriaURL.path) {
-                            Image(uiImage: imagem)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            fotoPlaceholder
-                        }
-                    }
-                    .frame(height: 320)
-                    .containerRelativeFrame(
-                        .horizontal,
-                        count: 10,
-                        span: 9,
-                        spacing: 8
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-            .scrollTargetLayout()
+    private var imagens: [UIImage] {
+        let disponiveis = fotos.compactMap {
+            UIImage(contentsOfFile: $0.arquivoURL.path)
         }
-        .scrollIndicators(.hidden)
-        .scrollTargetBehavior(.viewAligned)
-        .contentMargins(.horizontal, 16, for: .scrollContent)
-        .overlay {
-            if estaCarregando {
-                ProgressView()
-            }
+        if !disponiveis.isEmpty { return disponiveis }
+        if let fotoProvisoriaURL,
+           let imagem = UIImage(contentsOfFile: fotoProvisoriaURL.path) {
+            return [imagem]
         }
+        return []
     }
 
-    private var fotoPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(.quaternary)
-            .frame(height: 320)
-            .overlay {
-                Image(systemName: "photo")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary)
+    var body: some View {
+        let imagensDisponiveis = imagens
+        if !imagensDisponiveis.isEmpty {
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 8) {
+                    ForEach(imagensDisponiveis.indices, id: \.self) { indice in
+                        Image(uiImage: imagensDisponiveis[indice])
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: 320)
+                            .containerRelativeFrame(
+                                .horizontal,
+                                count: 10,
+                                span: 9,
+                                spacing: 8
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .scrollTargetLayout()
             }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .padding(.bottom, 24)
+        }
     }
 }
 

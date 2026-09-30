@@ -28,8 +28,8 @@ struct CadastrarSpotView: View {
 
         VStack(spacing: 0) {
             Picker("Tipo de Spot", selection: $viewModel.tipoSelecionado) {
-                Text("Espaços").tag(TipoSpot.espaco)
-                Text("Eventos").tag(TipoSpot.evento)
+                Text("Evento").tag(TipoSpot.evento)
+                Text("Espaço").tag(TipoSpot.espaco)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
@@ -235,11 +235,14 @@ struct CadastrarSpotView: View {
 
         return Section {
             if viewModel.mostraTelefone {
-                HStack {
-                    botaoRemover("Remover telefone", acao: viewModel.removerTelefone)
-                    TextField("Telefone (opcional)", text: $viewModel.telefone)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
+                linhaObrigatoria(pendente: viewModel.telefonePendente) {
+                    HStack {
+                        botaoRemover("Remover telefone", acao: viewModel.removerTelefone)
+                        TextField("Telefone *", text: $viewModel.telefone)
+                            .keyboardType(.phonePad)
+                            .textContentType(.telephoneNumber)
+                            .accessibilityLabel("Telefone, obrigatório")
+                    }
                 }
                 if let telefone = viewModel.telefoneSugerido {
                     Button { viewModel.usarTelefoneDaConta() } label: {
@@ -248,17 +251,20 @@ struct CadastrarSpotView: View {
                     }
                 }
             } else {
-                Menu {
-                    if let telefone = viewModel.telefoneSugerido {
-                        Button("Usar telefone da conta: \(telefone)", systemImage: "person.crop.circle") {
-                            viewModel.usarTelefoneDaConta()
+                linhaObrigatoria(pendente: viewModel.telefonePendente) {
+                    Menu {
+                        if let telefone = viewModel.telefoneSugerido {
+                            Button("Usar telefone da conta: \(telefone)", systemImage: "person.crop.circle") {
+                                viewModel.usarTelefoneDaConta()
+                            }
                         }
+                        Button("Digitar outro telefone", systemImage: "phone") {
+                            viewModel.mostraTelefone = true
+                        }
+                    } label: {
+                        rotuloAdicionar("Adicionar telefone *")
                     }
-                    Button("Digitar outro telefone", systemImage: "phone") {
-                        viewModel.mostraTelefone = true
-                    }
-                } label: {
-                    rotuloAdicionar("Adicionar telefone")
+                    .accessibilityHint("Obrigatório para cadastrar o \(viewModel.nomeTipo)")
                 }
             }
         }
