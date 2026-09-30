@@ -282,9 +282,6 @@ final class SpotCRUD {
             spot: spot,
             contexto: contexto
         )
-        if try await restricoes.estaRestrito(id) {
-            throw ErroCRUD.spotRestrito
-        }
         do {
             try await cliente.excluir(registro.recordID, tipo: .spot)
         } catch ErroCloudKit.registroNaoEncontrado {
