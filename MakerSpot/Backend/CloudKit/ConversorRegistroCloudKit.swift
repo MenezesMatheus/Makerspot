@@ -63,6 +63,55 @@ enum ConversorRegistroCloudKit {
         )
     }
 
+    // Usuário público
+
+    static func registro(
+        de usuario: UsuarioPublico,
+        existente: CKRecord? = nil
+    ) throws -> CKRecord {
+        guard IdentificadorContaCloudKit.normalizarHash(usuario.usuarioHash) == usuario.usuarioHash,
+              let appleUserID = usuario.appleUserID,
+              ApoioCRUD.textoOpcional(appleUserID) == appleUserID,
+              ApoioCRUD.textoOpcional(usuario.nomePublico) == usuario.nomePublico else {
+            throw ErroCloudKit.dadosInvalidos(descricao: "O cadastro público do usuário é inválido.")
+        }
+        let registro = try prepararRegistro(
+            tipo: .usuarioPublico,
+            identificador: IdentificadorCloudKit.usuarioPublico(usuarioHash: usuario.usuarioHash),
+            existente: existente
+        )
+        registro[CampoCloudKit.UsuarioPublico.usuarioHash] = usuario.usuarioHash
+        registro[CampoCloudKit.UsuarioPublico.appleUserID] = appleUserID
+        registro[CampoCloudKit.UsuarioPublico.nomePublico] = usuario.nomePublico
+        registro[CampoCloudKit.criadoEm] = usuario.criadoEm
+        return registro
+    }
+
+    static func usuarioPublico(de registro: CKRecord) throws -> UsuarioPublico {
+        try verificarTipo(.usuarioPublico, do: registro)
+        let hash: String = try ler(CampoCloudKit.UsuarioPublico.usuarioHash, do: registro)
+        guard IdentificadorContaCloudKit.normalizarHash(hash) == hash else {
+            throw campoInvalido(CampoCloudKit.UsuarioPublico.usuarioHash, do: registro)
+        }
+        try verificarIdentificador(IdentificadorCloudKit.usuarioPublico(usuarioHash: hash), do: registro)
+        let nome: String = try ler(CampoCloudKit.UsuarioPublico.nomePublico, do: registro)
+        guard ApoioCRUD.textoOpcional(nome) == nome else {
+            throw campoInvalido(CampoCloudKit.UsuarioPublico.nomePublico, do: registro)
+        }
+        // A ausência no formato anterior permite compará-lo com a projeção atual
+        // e preencher appleUserID na próxima sincronização, sem duplicar o registro.
+        let appleUserID: String? = try lerOpcional(CampoCloudKit.UsuarioPublico.appleUserID, do: registro)
+        if let appleUserID, ApoioCRUD.textoOpcional(appleUserID) != appleUserID {
+            throw campoInvalido(CampoCloudKit.UsuarioPublico.appleUserID, do: registro)
+        }
+        return UsuarioPublico(
+            usuarioHash: hash,
+            appleUserID: appleUserID,
+            nomePublico: nome,
+            criadoEm: try ler(CampoCloudKit.criadoEm, do: registro)
+        )
+    }
+
     // Spot
 
     static func registro(

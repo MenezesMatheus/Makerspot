@@ -15,6 +15,18 @@ DEFINE SCHEMA
         atualizadoEm TIMESTAMP
     );
 
+    RECORD TYPE UsuarioPublico (
+        "___recordID" REFERENCE QUERYABLE,
+        versaoEsquema INT64,
+        usuarioHash STRING QUERYABLE,
+        appleUserID STRING QUERYABLE,
+        nomePublico STRING QUERYABLE SORTABLE,
+        criadoEm TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE, READ TO "_icloud",
+        GRANT WRITE, CREATE, READ TO ModeradorMakerSpot
+    );
+
     RECORD TYPE FotoPerfil (
         "___recordID" REFERENCE QUERYABLE,
         id STRING,
