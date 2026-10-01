@@ -8,6 +8,7 @@
 import CloudKit
 import CryptoKit
 import Foundation
+import OSLog
 
 struct DadosPerfilUsuario: Equatable, Sendable {
     var nome: String?
@@ -16,6 +17,7 @@ struct DadosPerfilUsuario: Equatable, Sendable {
 }
 
 final class UsuarioCRUD {
+    private static let logger = Logger(subsystem: "MakerSpot", category: "UsuarioPublico")
     private let cliente: ClienteCloudKit
     private let sessao: SessaoUsuario
     private let autenticacaoApple: AutenticacaoApple
@@ -114,6 +116,7 @@ final class UsuarioCRUD {
         }
 
         try sessao.iniciar(com: usuario)
+        await sincronizarUsuarioPublicoSeNecessario(do: usuario)
         sincronizarFotoPublicaSeNecessario(do: usuario)
         return usuario
     }
@@ -155,6 +158,7 @@ final class UsuarioCRUD {
         }
 
         sessao.restaurar(encontrado.usuario)
+        await sincronizarUsuarioPublicoSeNecessario(do: encontrado.usuario)
         sincronizarFotoPublicaSeNecessario(do: encontrado.usuario)
         return encontrado.usuario
     }
@@ -171,6 +175,7 @@ final class UsuarioCRUD {
             throw ErroCRUD.contaCloudKitDivergente
         }
         sessao.restaurar(usuario)
+        await sincronizarUsuarioPublicoSeNecessario(do: usuario)
         return usuario
     }
 
@@ -214,6 +219,7 @@ final class UsuarioCRUD {
         let salvo = try await cliente.salvar(alterado)
         let atualizado = try ConversorRegistroCloudKit.usuario(de: salvo)
         sessao.restaurar(atualizado)
+        await sincronizarUsuarioPublicoSeNecessario(do: atualizado)
         return atualizado
     }
 
@@ -224,6 +230,56 @@ final class UsuarioCRUD {
     private func sincronizarFotoPublicaSeNecessario(do usuario: Usuario) {
         guard sessao.usuarioAtual?.id == usuario.id else { return }
         Task { _ = try? await FotoCRUD(sessao: sessao).buscarFotoPerfilAtual() }
+    }
+
+    private func sincronizarUsuarioPublicoSeNecessario(do usuario: Usuario) async {
+        do {
+            try await sessao.executarOperacaoUsuarioPublico { [self] in
+                try await sincronizarUsuarioPublico(do: usuario)
+            }
+        } catch {
+            // O perfil privado já foi salvo. Repetimos no próximo login,
+            // restauração ou carregamento do perfil, sem invalidar essa gravação.
+            Self.logger.error("Falha ao sincronizar UsuarioPublico: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    private func sincronizarUsuarioPublico(do usuario: Usuario) async throws {
+        for tentativa in 0..<3 {
+            guard sessao.usuarioAtual?.id == usuario.id else { return }
+            // Usa a fonte privada atual, inclusive em novas tentativas após conflito.
+            let registroPrivado = try await cliente.buscar(
+                IdentificadorCloudKit.usuario(usuario.id),
+                tipo: .usuario
+            )
+            let atual = try ConversorRegistroCloudKit.usuario(de: registroPrivado)
+            guard atual.appleUserID == usuario.appleUserID,
+                  atual.cloudKitUserRecordName == usuario.cloudKitUserRecordName else {
+                throw ErroCRUD.contaCloudKitDivergente
+            }
+            let publico = UsuarioPublico(usuario: atual)
+            let existente: CKRecord?
+            do {
+                existente = try await cliente.buscar(
+                    IdentificadorCloudKit.usuarioPublico(usuarioHash: publico.usuarioHash),
+                    tipo: .usuarioPublico
+                )
+            } catch ErroCloudKit.registroNaoEncontrado {
+                existente = nil
+            }
+            if let existente,
+               try ConversorRegistroCloudKit.usuarioPublico(de: existente) == publico {
+                return
+            }
+            guard sessao.usuarioAtual?.id == usuario.id else { return }
+            let registro = try ConversorRegistroCloudKit.registro(de: publico, existente: existente)
+            do {
+                _ = try await cliente.salvar(registro)
+                return
+            } catch ErroCloudKit.conflito where tentativa < 2 {
+                continue
+            }
+        }
     }
 
     func excluirConta() async throws {
@@ -278,10 +334,20 @@ final class UsuarioCRUD {
 
         try sessao.salvosLocais.excluirDadosDaConta()
         try? await AssinaturasCloudKit().reconciliarAssinaturas(com: [])
-        try await excluirSeExistir(
-            IdentificadorCloudKit.usuario(contexto.usuario.id),
-            tipo: .usuario
-        )
+        // Aguarda publicações anteriores e impede recriação por uma publicação pendente.
+        // Falhas reais de exclusão pública são propagadas para permitir nova tentativa.
+        try await sessao.executarOperacaoUsuarioPublico { [self] in
+            try await excluirSeExistir(
+                IdentificadorCloudKit.usuarioPublico(
+                    usuarioHash: IdentificadorCloudKit.hashUsuarioPublico(usuarioID)
+                ),
+                tipo: .usuarioPublico
+            )
+            try await excluirSeExistir(
+                IdentificadorCloudKit.usuario(usuarioID),
+                tipo: .usuario
+            )
+        }
         try sessao.encerrar()
     }
 

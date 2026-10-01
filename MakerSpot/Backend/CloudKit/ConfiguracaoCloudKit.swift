@@ -16,6 +16,7 @@ enum EscopoBancoCloudKit: Sendable {
 
 enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
     case usuario = "Usuario"
+    case usuarioPublico = "UsuarioPublico"
     case spot = "Spot"
     case fotoSpot = "FotoSpot"
     case fotoPerfil = "FotoPerfil"
@@ -31,7 +32,7 @@ enum TipoRegistroCloudKit: String, CaseIterable, Sendable {
         switch self {
         case .usuario, .fotoPerfil, .spotSalvo:
             return .privado
-        case .spot, .fotoSpot, .fotoPerfilPublica, .denuncia, .analiseDenuncia, .banimentoUsuario,
+        case .usuarioPublico, .spot, .fotoSpot, .fotoPerfilPublica, .denuncia, .analiseDenuncia, .banimentoUsuario,
              .notificacaoModeracao, .spotRestrito:
             return .publico
         }
@@ -51,6 +52,12 @@ enum CampoCloudKit {
         static let sobrenome = "sobrenome"
         static let fotoID = "fotoID"
         static let telefonePadrao = "telefonePadrao"
+    }
+
+    enum UsuarioPublico {
+        static let usuarioHash = "usuarioHash"
+        static let appleUserID = "appleUserID"
+        static let nomePublico = "nomePublico"
     }
 
     enum Spot {
@@ -176,6 +183,14 @@ enum IdentificadorCloudKit {
 
     static func usuario(_ id: UUID) -> CKRecord.ID {
         CKRecord.ID(recordName: "usuario_\(texto(id))")
+    }
+
+    static func hashUsuarioPublico(_ id: UUID) -> String {
+        IdentificadorContaCloudKit.hash(de: "MakerSpot.UsuarioPublico.v1|\(texto(id))")
+    }
+
+    static func usuarioPublico(usuarioHash: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "usuario_publico_\(usuarioHash)")
     }
 
     static func spot(_ id: UUID) -> CKRecord.ID {

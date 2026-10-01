@@ -55,6 +55,7 @@ final class SessaoUsuario {
     @ObservationIgnored private var nomeContaCloudKitValidado: String?
     @ObservationIgnored private var validacaoCloudKitExpiraEm: Date?
     @ObservationIgnored private var validacaoCloudKitEmAndamento: Task<String, Error>?
+    @ObservationIgnored private var operacaoUsuarioPublico: (id: UUID, tarefa: Task<Void, Error>)?
 
     private static let validadeDaContaCloudKit: TimeInterval = 60
     private static let validadeDoCacheDeFotos: TimeInterval = 15 * 60
@@ -63,6 +64,26 @@ final class SessaoUsuario {
 
     var estaAutenticado: Bool {
         usuarioAtual != nil
+    }
+
+    /// Serializa publicação e exclusão, inclusive entre instâncias de UsuarioCRUD.
+    /// Uma sincronização iniciada antes da exclusão não pode recriar o registro depois dela.
+    func executarOperacaoUsuarioPublico(
+        _ operacao: @escaping @MainActor () async throws -> Void
+    ) async throws {
+        let anterior = operacaoUsuarioPublico?.tarefa
+        let id = UUID()
+        let tarefa = Task { @MainActor in
+            if let anterior { _ = try? await anterior.value }
+            try await operacao()
+        }
+        operacaoUsuarioPublico = (id, tarefa)
+        defer {
+            if operacaoUsuarioPublico?.id == id {
+                operacaoUsuarioPublico = nil
+            }
+        }
+        try await tarefa.value
     }
 
     func iniciar(com usuario: Usuario) throws {
