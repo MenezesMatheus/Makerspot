@@ -52,6 +52,7 @@ final class SessaoUsuario {
     @ObservationIgnored private var publicadoresSemFotoAte: [UUID: Date] = [:]
     @ObservationIgnored private var buscasFotosPublicadores: [UUID: Task<FotoDisponivel?, Never>] = [:]
     private(set) var usuarioAtual: Usuario?
+    private(set) var deveOrientarDesvinculacaoApple = false
     @ObservationIgnored private var nomeContaCloudKitValidado: String?
     @ObservationIgnored private var validacaoCloudKitExpiraEm: Date?
     @ObservationIgnored private var validacaoCloudKitEmAndamento: Task<String, Error>?
@@ -118,6 +119,17 @@ final class SessaoUsuario {
         usuarioAtual = nil
         EstadoSpotsSalvosNotificacoes.compartilhado.limpar()
         alteracoesSpots.limpar()
+    }
+
+    /// Só sinaliza sucesso depois de remover a sessão salva. O aviso sobrevive
+    /// à saída das telas de perfil porque pertence ao fluxo principal do app.
+    func encerrarAposExcluirConta() throws {
+        try encerrar()
+        deveOrientarDesvinculacaoApple = true
+    }
+
+    func dispensarOrientacaoDesvinculacaoApple() {
+        deveOrientarDesvinculacaoApple = false
     }
 
     func bloquear() {

@@ -38,6 +38,7 @@ final class LoginViewModel {
     }
 
     func configurar(_ requisicao: ASAuthorizationAppleIDRequest) {
+        mensagemDeErro = nil
         autenticacaoApple.configurar(requisicao)
     }
 
@@ -78,6 +79,11 @@ final class LoginViewModel {
     }
 
     func registrarFalhaDaApple(_ erro: Error) {
+        if let erroApple = erro as? ASAuthorizationError,
+           erroApple.code == .canceled {
+            mensagemDeErro = nil
+            return
+        }
         mensagemDeErro = erro.localizedDescription
     }
 

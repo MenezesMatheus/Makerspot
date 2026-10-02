@@ -227,6 +227,18 @@ final class UsuarioCRUD {
         try sessao.encerrar()
     }
 
+    /// Confere novamente ao voltar dos Ajustes ou receber a revogação da Apple.
+    func verificarCredencialDaSessaoAtual() async throws {
+        guard let usuario = sessao.usuarioAtual else { return }
+        let estado = try await autenticacaoApple.verificarEstado(
+            identificadorUsuario: usuario.appleUserID
+        )
+        guard sessao.usuarioAtual?.id == usuario.id else { return }
+        if estado != .autorizada {
+            try sessao.encerrar()
+        }
+    }
+
     private func sincronizarFotoPublicaSeNecessario(do usuario: Usuario) {
         guard sessao.usuarioAtual?.id == usuario.id else { return }
         Task { _ = try? await FotoCRUD(sessao: sessao).buscarFotoPerfilAtual() }
@@ -348,7 +360,7 @@ final class UsuarioCRUD {
                 tipo: .usuario
             )
         }
-        try sessao.encerrar()
+        try sessao.encerrarAposExcluirConta()
     }
 
     private func buscarUsuario(

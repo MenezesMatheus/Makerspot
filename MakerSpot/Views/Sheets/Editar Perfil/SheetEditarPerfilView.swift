@@ -193,6 +193,10 @@ struct SheetEditarPerfilView: View {
         } message: { mensagem in
             Text(mensagem)
         }
+        .avisoAnaliseFotosDesativada(
+            mensagem: viewModel.mensagemDeErro,
+            aoFechar: viewModel.limparErro
+        )
     }
 
     private var corDeFundoDoSheet: Color {
@@ -355,9 +359,14 @@ struct SheetEditarPerfilView: View {
 
     private var erroApresentado: Binding<Bool> {
         Binding(
-            get: { viewModel.mensagemDeErro != nil },
+            get: {
+                viewModel.mensagemDeErro != nil
+                    && !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro)
+            },
             set: { novoValor in
-                if !novoValor { viewModel.limparErro() }
+                if !novoValor, !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro) {
+                    viewModel.limparErro()
+                }
             }
         )
     }

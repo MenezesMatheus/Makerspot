@@ -219,8 +219,15 @@ struct PerfilView: View {
             .alert(
                 "Erro",
                 isPresented: Binding(
-                    get: { viewModel.mensagemDeErro != nil },
-                    set: { _ in viewModel.limparErro() }
+                    get: {
+                        viewModel.mensagemDeErro != nil
+                            && !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro)
+                    },
+                    set: { novoValor in
+                        if !novoValor, !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro) {
+                            viewModel.limparErro()
+                        }
+                    }
                 )
             ) {
                 Button("OK") { viewModel.limparErro() }
@@ -228,6 +235,10 @@ struct PerfilView: View {
                 Text(viewModel.mensagemDeErro ?? "")
             }
         }
+        .avisoAnaliseFotosDesativada(
+            mensagem: viewModel.mensagemDeErro,
+            aoFechar: viewModel.limparErro
+        )
     }
 
     private var menuAcoesPerfil: some View {
