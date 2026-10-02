@@ -5,6 +5,8 @@
 //  Created by Matheus Miranda Cabral de Menezes on 14/09/26.
 //
 
+import AuthenticationServices
+import Combine
 import SwiftUI
 
 @main
@@ -64,6 +66,8 @@ private struct FluxoPrincipalView: View {
                 LoginView(sessao: sessao) {
                     continuarAposAutenticacao()
                 }
+                .disabled(sessao.deveOrientarDesvinculacaoApple)
+                .accessibilityHidden(sessao.deveOrientarDesvinculacaoApple)
 
             case .criandoPerfil:
                 CriarContaView(
@@ -105,6 +109,8 @@ private struct FluxoPrincipalView: View {
             guard novaFase == .active,
                   etapa == .principal || etapa == .criandoPerfil else { return }
             Task {
+                try? await UsuarioCRUD(sessao: sessao).verificarCredencialDaSessaoAtual()
+                guard sessao.estaAutenticado else { return }
                 try? await UsuarioCRUD(sessao: sessao).verificarBanimentoDaSessaoAtual()
                 if etapa == .principal, sessao.estaAutenticado {
                     await verificarRestricoes()
@@ -113,6 +119,13 @@ private struct FluxoPrincipalView: View {
             if etapa == .principal {
                 Task { await coordenadorNotificacoes.configurar(sessao: sessao) }
                 sessao.enviosFotosCadastro.retomarPendentes()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: ASAuthorizationAppleIDProvider.credentialRevokedNotification
+        )) { _ in
+            Task {
+                try? await UsuarioCRUD(sessao: sessao).verificarCredencialDaSessaoAtual()
             }
         }
         .onChange(of: roteador.atualizacaoRestricaoSpot) { _, _ in
@@ -130,6 +143,11 @@ private struct FluxoPrincipalView: View {
             )
         }
         .overlay {
+            if etapa == .login, sessao.deveOrientarDesvinculacaoApple {
+                PopUpContaExcluidaView(
+                    aoFechar: sessao.dispensarOrientacaoDesvinculacaoApple
+                )
+            }
             if etapa == .principal, let aviso = avisoRestricaoParaExibir {
                 PopUpTextoView(
                     estaApresentado: Binding(

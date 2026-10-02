@@ -72,13 +72,24 @@ struct CadastrarSpotView: View {
             )
             PopUpTextoView(
                 estaApresentado: Binding(
-                    get: { viewModel.mensagemDeErro != nil },
-                    set: { if !$0 { viewModel.limparErro() } }
+                    get: {
+                        viewModel.mensagemDeErro != nil
+                            && !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro)
+                    },
+                    set: {
+                        if !$0, !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro) {
+                            viewModel.limparErro()
+                        }
+                    }
                 ),
                 titulo: "Não foi possível concluir",
                 subtitulo: viewModel.mensagemDeErro
             )
         }
+        .avisoAnaliseFotosDesativada(
+            mensagem: viewModel.mensagemDeErro,
+            aoFechar: viewModel.limparErro
+        )
         .interactiveDismissDisabled(viewModel.bloqueiaInteracao)
         .sheet(item: $horarioSelecionado) { horario in
             SelecaoDiasFuncionamento(dias: diasDoHorario(id: horario.id))

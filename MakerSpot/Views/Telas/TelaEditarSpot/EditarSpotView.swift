@@ -84,6 +84,10 @@ struct EditarSpotView: View {
             } message: {
                 Text(viewModel.mensagemDeErro ?? "")
             }
+            .avisoAnaliseFotosDesativada(
+                mensagem: viewModel.mensagemDeErro,
+                aoFechar: viewModel.limparErro
+            )
     }
 
     @ToolbarContentBuilder
@@ -147,8 +151,15 @@ struct EditarSpotView: View {
 
     private var erroApresentado: Binding<Bool> {
         Binding(
-            get: { viewModel.mensagemDeErro != nil },
-            set: { if !$0 { viewModel.limparErro() } }
+            get: {
+                viewModel.mensagemDeErro != nil
+                    && !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro)
+            },
+            set: {
+                if !$0, !ErroModeracaoFotos.ehAvisoAnaliseDesativada(viewModel.mensagemDeErro) {
+                    viewModel.limparErro()
+                }
+            }
         )
     }
 

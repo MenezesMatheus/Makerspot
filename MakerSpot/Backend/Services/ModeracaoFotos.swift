@@ -26,10 +26,24 @@ enum ErroModeracaoFotos: LocalizedError {
         case .arquivoNaoEncontrado:
             return "A foto selecionada não foi encontrada."
         case .analiseDesativada:
-            return "A foto não foi adicionada porque a análise de conteúdo sensível está indisponível. Confira Aviso de Conteúdo Sensível em Ajustes > Privacidade e Segurança e permita a análise para o MakerSpot."
+            return """
+            Não foi possível adicionar fotos porque a verificação de conteúdo está indisponível. Para permitir o envio de fotos, siga os passos abaixo:
+
+            1. Abra o app Ajustes.
+
+            2. Acesse a Privacidade e Segurança.
+
+            3. Toque em Aviso de Conteúdo Sensível.
+
+            4. Ative a opção e permita a análise para o MakerSpot.
+            """
         case .falhaNaAnalise(let descricao):
             return descricao
         }
+    }
+
+    static func ehAvisoAnaliseDesativada(_ mensagem: String?) -> Bool {
+        mensagem == Self.analiseDesativada.errorDescription
     }
 }
 

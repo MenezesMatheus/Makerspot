@@ -352,7 +352,11 @@ final class EditarSpotViewModel {
             } catch is CancellationError {
                 return
             } catch {
-                mensagemDeErro = "Não foi possível adicionar uma das fotos. \(error.localizedDescription)"
+                if case ErroModeracaoFotos.analiseDesativada = error {
+                    mensagemDeErro = error.localizedDescription
+                } else {
+                    mensagemDeErro = "Não foi possível adicionar uma das fotos. \(error.localizedDescription)"
+                }
             }
         }
     }
