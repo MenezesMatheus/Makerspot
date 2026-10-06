@@ -16,6 +16,7 @@ final class CriarContaViewModel {
     var nome: String
     var sobrenome: String
     var telefonePadrao: String
+    var aceitouTermos = false
     private(set) var novaFotoDados: Data?
     private(set) var removerFotoAtual = false
 
@@ -28,6 +29,7 @@ final class CriarContaViewModel {
 
     private let crud: UsuarioCRUD
     private let fotoCRUD: FotoCRUD
+    private var carregouPerfil = false
 
     var podeConcluir: Bool {
         !textoNormalizado(nome).isEmpty
@@ -59,7 +61,8 @@ final class CriarContaViewModel {
     }
 
     func carregar() async {
-        guard !estaCarregando else { return }
+        // Voltar da leitura dos termos não deve substituir os dados do formulário.
+        guard !carregouPerfil, !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
         defer { estaCarregando = false }
@@ -68,6 +71,7 @@ final class CriarContaViewModel {
             let usuario = try await crud.buscarUsuarioAtual()
             fotoPerfil = try await fotoCRUD.buscarFotoPerfilAtual()
             aplicar(usuario)
+            carregouPerfil = true
         } catch is CancellationError {
             return
         } catch {
@@ -108,6 +112,10 @@ final class CriarContaViewModel {
     @discardableResult
     func concluirCadastro() async -> Usuario? {
         guard !estaSalvando else { return nil }
+        guard aceitouTermos else {
+            mensagemDeErro = "Para criar sua conta, leia e aceite os Termos e Condições de Uso."
+            return nil
+        }
         guard podeConcluir else {
             mensagemDeErro = mensagemDeValidacao
             return nil

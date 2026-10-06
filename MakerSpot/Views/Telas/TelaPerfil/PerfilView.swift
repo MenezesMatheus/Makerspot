@@ -122,17 +122,19 @@ struct PerfilView: View {
                         .padding(.vertical, 16)
 
 
-                        secaoDoUsuario(
-                            titulo: "Meus eventos",
-                            spots: viewModel.eventos,
-                            destino: MeusEventosView(sessao: sessao)
-                        )
+                        VStack(spacing: viewModel.eventos.isEmpty && viewModel.espacos.isEmpty ? 34 : nil) {
+                            secaoDoUsuario(
+                                titulo: "Meus eventos",
+                                spots: viewModel.eventos,
+                                destino: MeusEventosView(sessao: sessao)
+                            )
 
-                        secaoDoUsuario(
-                            titulo: "Meus espaços",
-                            spots: viewModel.espacos,
-                            destino: MeusEspacosView(sessao: sessao)
-                        )
+                            secaoDoUsuario(
+                                titulo: "Meus espaços",
+                                spots: viewModel.espacos,
+                                destino: MeusEspacosView(sessao: sessao)
+                            )
+                        }
                     }
                     .padding(.bottom, 32)
                 }
