@@ -14,6 +14,7 @@ struct CriarContaView: View {
     @State private var itemFotoSelecionado: PhotosPickerItem?
     @State private var mostrarOpcoesFoto = false
     @State private var mostrarSeletorFotos = false
+    @State private var mostrarConfirmacaoTermos = false
     @FocusState private var campoFocado: Campo?
 
     private let aoConcluir: (Usuario) -> Void
@@ -99,15 +100,6 @@ struct CriarContaView: View {
                     .padding(.bottom, 28)
                 }
                 .scrollDismissesKeyboard(.interactively)
-
-                if viewModel.estaSalvando {
-                    Color.black.opacity(0.24)
-                        .ignoresSafeArea()
-                    ProgressView("Criando perfil…")
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 18)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -126,7 +118,7 @@ struct CriarContaView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Button(action: concluir) {
+                Button(action: solicitarConfirmacaoTermos) {
                     Text("Criar conta")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
@@ -139,6 +131,19 @@ struct CriarContaView: View {
                 .frame(maxWidth: 520)
                 .padding(.horizontal, 26)
                 .padding(.vertical, 16)
+            }
+            .disabled(mostrarConfirmacaoTermos || viewModel.estaSalvando)
+            .accessibilityHidden(mostrarConfirmacaoTermos)
+            .overlay {
+                if mostrarConfirmacaoTermos {
+                    PopUpTermosDeUsoView(
+                        aceitouTermos: $viewModel.aceitouTermos,
+                        estaSalvando: viewModel.estaSalvando,
+                        podeConcluir: viewModel.podeConcluir,
+                        aoCancelar: { mostrarConfirmacaoTermos = false },
+                        aoConfirmar: concluir
+                    )
+                }
             }
         }
         .task {
@@ -317,10 +322,17 @@ struct CriarContaView: View {
         )
     }
 
-    private func concluir() {
+    private func solicitarConfirmacaoTermos() {
+        guard viewModel.podeConcluir else { return }
         campoFocado = nil
+        mostrarConfirmacaoTermos = true
+    }
+
+    private func concluir() {
+        guard mostrarConfirmacaoTermos, viewModel.aceitouTermos else { return }
         Task {
             if let usuario = await viewModel.concluirCadastro() {
+                mostrarConfirmacaoTermos = false
                 aoConcluir(usuario)
             }
         }
