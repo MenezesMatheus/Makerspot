@@ -36,6 +36,15 @@ struct TermosDeUsoView: View {
                                 }
                             }
                         }
+
+                        if secao.mostraLinkPoliticaPrivacidade {
+                            NavigationLink("Ler a Política de Privacidade") {
+                                PoliticaPrivacidadeView()
+                            }
+                            .font(.body.weight(.semibold))
+                            .underline()
+                            .frame(minHeight: 44, alignment: .leading)
+                        }
                     }
                 }
 
