@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PopUpTermosDeUsoView: View {
     @Binding var aceitouTermos: Bool
+    @Binding var aceitouPoliticaPrivacidade: Bool
     let estaSalvando: Bool
     let podeConcluir: Bool
     let aoCancelar: () -> Void
@@ -16,30 +17,51 @@ struct PopUpTermosDeUsoView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Termos de Uso")
+                        Text("Termos e Privacidade")
                             .font(.title3.weight(.semibold))
                             .accessibilityAddTraits(.isHeader)
 
-                        Text("Antes de criar sua conta, leia e aceite os Termos e Condições de Uso do MakerSpot.")
+                        Text("Antes de criar sua conta, leia e confirme os Termos e Condições de Uso e a Política de Privacidade do MakerSpot.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                    }
 
+                    VStack(alignment: .leading, spacing: 12) {
                         NavigationLink {
                             TermosDeUsoView()
                         } label: {
                             Text("Clique aqui para ler os termos de uso")
                                 .font(.subheadline.weight(.semibold))
+                                .multilineTextAlignment(.leading)
                                 .underline()
                                 .frame(minHeight: 44, alignment: .leading)
                         }
-                        .disabled(estaSalvando)
-                    }
 
-                    Toggle(isOn: $aceitouTermos) {
-                        Text("Li e concordo com os Termos e Condições de Uso do MakerSpot.")
-                            .font(.subheadline)
+                        Toggle(isOn: $aceitouTermos) {
+                            Text("Li e concordo com os Termos e Condições de Uso do MakerSpot.")
+                                .font(.subheadline)
+                        }
+                        .toggleStyle(CheckboxTermosStyle())
                     }
-                    .toggleStyle(CheckboxTermosStyle())
+                    .disabled(estaSalvando)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        NavigationLink {
+                            PoliticaPrivacidadeView()
+                        } label: {
+                            Text("Clique aqui para ler a política de privacidade")
+                                .font(.subheadline.weight(.semibold))
+                                .multilineTextAlignment(.leading)
+                                .underline()
+                                .frame(minHeight: 44, alignment: .leading)
+                        }
+
+                        Toggle(isOn: $aceitouPoliticaPrivacidade) {
+                            Text("Li e estou ciente da Política de Privacidade do MakerSpot.")
+                                .font(.subheadline)
+                        }
+                        .toggleStyle(CheckboxTermosStyle())
+                    }
                     .disabled(estaSalvando)
 
                     GlassEffectContainer(spacing: 10) {
@@ -53,7 +75,7 @@ struct PopUpTermosDeUsoView: View {
                             .buttonBorderShape(.capsule)
                             .controlSize(.large)
                             .tint(.accentColor)
-                            .disabled(!aceitouTermos || !podeConcluir || estaSalvando)
+                            .disabled(!aceitouTermos || !aceitouPoliticaPrivacidade || !podeConcluir || estaSalvando)
 
                             Button(role: .cancel, action: aoCancelar) {
                                 Text("Cancelar")
@@ -116,11 +138,13 @@ private struct CheckboxTermosStyle: ToggleStyle {
     }
 }
 
-#Preview("Aceite dos termos") {
+#Preview("Termos e privacidade") {
     @Previewable @State var aceitouTermos = false
+    @Previewable @State var aceitouPoliticaPrivacidade = false
     NavigationStack {
         PopUpTermosDeUsoView(
             aceitouTermos: $aceitouTermos,
+            aceitouPoliticaPrivacidade: $aceitouPoliticaPrivacidade,
             estaSalvando: false,
             podeConcluir: true,
             aoCancelar: {},

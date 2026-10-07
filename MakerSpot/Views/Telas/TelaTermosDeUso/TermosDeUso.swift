@@ -5,7 +5,7 @@ enum TermosDeUso {
     static let ultimaAtualizacao = "Última atualização: 30 set. 2026"
     static let introducao: [String] = [
         "Bem-vindo ao MakerSpot!",
-        "Estes Termos e Condições de Uso estabelecem as regras para utilização do aplicativo MakerSpot (“Aplicativo”), desenvolvido e disponibilizado por MakerSpot / Matheus Menezes",
+        "Estes Termos e Condições de Uso estabelecem as regras para utilização do aplicativo MakerSpot (“Aplicativo”), desenvolvido e disponibilizado por MakerSpot / Amanda de Morais - Bianca Duarte - Maria Júlia Sales - Matheus Menezes",
         "Ao criar uma conta ou utilizar o MakerSpot, você declara que leu, compreendeu e concorda com estes Termos.",
     ]
 
@@ -13,6 +13,7 @@ enum TermosDeUso {
         let titulo: String
         let paragrafos: [String]
         var itens: [String] = []
+        var mostraLinkPoliticaPrivacidade = false
     }
 
     static let secoes: [Secao] = [
@@ -93,8 +94,8 @@ enum TermosDeUso {
             paragrafos: [
                 "O tratamento dos dados pessoais dos usuários é realizado de acordo com a Política de Privacidade do MakerSpot.",
                 "A Política de Privacidade explica quais informações são coletadas, como são utilizadas, como são armazenadas e quais direitos podem ser exercidos pelos usuários.",
-                "Política de Privacidade: [colocar link da política de privacidade]",
-            ]
+            ],
+            mostraLinkPoliticaPrivacidade: true
         ),
         Secao(
             titulo: "10. Exclusão da conta",
@@ -128,8 +129,8 @@ enum TermosDeUso {
             titulo: "14. Contato",
             paragrafos: [
                 "Para dúvidas, solicitações ou informações relacionadas a estes Termos, entre em contato:",
-                "MakerSpot",
-                "Responsável: Matheus Menezes / MakerSpot",
+                "Aplicativo: MakerSpot",
+                "Responsáveis: Amanda de Morais, Bianca Duarte, Maria Júlia Sales, Matheus Menezes",
                 "E-mail: suportemakerspot@gmail.com",
             ]
         ),

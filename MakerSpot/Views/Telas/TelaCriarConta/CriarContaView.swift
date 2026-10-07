@@ -138,6 +138,7 @@ struct CriarContaView: View {
                 if mostrarConfirmacaoTermos {
                     PopUpTermosDeUsoView(
                         aceitouTermos: $viewModel.aceitouTermos,
+                        aceitouPoliticaPrivacidade: $viewModel.aceitouPoliticaPrivacidade,
                         estaSalvando: viewModel.estaSalvando,
                         podeConcluir: viewModel.podeConcluir,
                         aoCancelar: { mostrarConfirmacaoTermos = false },
@@ -329,7 +330,9 @@ struct CriarContaView: View {
     }
 
     private func concluir() {
-        guard mostrarConfirmacaoTermos, viewModel.aceitouTermos else { return }
+        guard mostrarConfirmacaoTermos,
+              viewModel.aceitouTermos,
+              viewModel.aceitouPoliticaPrivacidade else { return }
         Task {
             if let usuario = await viewModel.concluirCadastro() {
                 mostrarConfirmacaoTermos = false

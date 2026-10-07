@@ -17,6 +17,7 @@ final class CriarContaViewModel {
     var sobrenome: String
     var telefonePadrao: String
     var aceitouTermos = false
+    var aceitouPoliticaPrivacidade = false
     private(set) var novaFotoDados: Data?
     private(set) var removerFotoAtual = false
 
@@ -61,7 +62,7 @@ final class CriarContaViewModel {
     }
 
     func carregar() async {
-        // Voltar da leitura dos termos não deve substituir os dados do formulário.
+        // Voltar dos documentos não deve substituir os dados do formulário ou as confirmações.
         guard !carregouPerfil, !estaCarregando else { return }
         estaCarregando = true
         mensagemDeErro = nil
@@ -112,8 +113,8 @@ final class CriarContaViewModel {
     @discardableResult
     func concluirCadastro() async -> Usuario? {
         guard !estaSalvando else { return nil }
-        guard aceitouTermos else {
-            mensagemDeErro = "Para criar sua conta, leia e aceite os Termos e Condições de Uso."
+        guard aceitouTermos && aceitouPoliticaPrivacidade else {
+            mensagemDeErro = "Para criar sua conta, confirme a leitura dos Termos e Condições de Uso e da Política de Privacidade."
             return nil
         }
         guard podeConcluir else {
