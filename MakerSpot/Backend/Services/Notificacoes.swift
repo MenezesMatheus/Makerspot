@@ -93,7 +93,7 @@ final class EstadoSpotsSalvosNotificacoes {
 }
 
 final class Notificacoes {
-    static let emailSuporte = "supportemakerspot@gmail.com"
+    static let emailSuporte = "suportemakerspot@gmail.com"
     static let categoriaModeracao = "MAKERSPOT_MODERACAO"
     static let acaoSolicitarRevisao = "MAKERSPOT_SOLICITAR_REVISAO"
 
