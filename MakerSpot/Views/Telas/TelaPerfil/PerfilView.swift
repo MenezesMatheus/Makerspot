@@ -135,6 +135,9 @@ struct PerfilView: View {
                                 destino: MeusEspacosView(sessao: sessao)
                             )
                         }
+
+                        secoesSegurancaESuporte
+                            .padding(.top, 32)
                     }
                     .padding(.bottom, 32)
                 }
@@ -241,6 +244,90 @@ struct PerfilView: View {
             mensagem: viewModel.mensagemDeErro,
             aoFechar: viewModel.limparErro
         )
+    }
+
+    private var secoesSegurancaESuporte: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Segurança")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+
+                VStack(spacing: 0) {
+                    NavigationLink {
+                        PoliticaPrivacidadeView()
+                    } label: {
+                        linhaSeguranca(
+                            titulo: "Política de Privacidade",
+                            simbolo: "hand.raised"
+                        )
+                    }
+
+                    Divider()
+                        .padding(.leading, 44)
+
+                    NavigationLink {
+                        TermosDeUsoView()
+                    } label: {
+                        linhaSeguranca(
+                            titulo: "Termos de Uso",
+                            simbolo: "doc.text"
+                        )
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Suporte")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+
+                HStack(alignment: .top, spacing: 16) {
+                    Image(systemName: "envelope")
+                        .font(.body)
+                        .frame(width: 28, height: 20)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Entre em contato conosco")
+                            .font(.subheadline)
+
+                        if let url = URL(string: "mailto:\(Notificacoes.emailSuporte)") {
+                            Link(Notificacoes.emailSuporte, destination: url)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(minHeight: 44, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func linhaSeguranca(titulo: String, simbolo: String) -> some View {
+        HStack(spacing: 16) {
+            Image(systemName: simbolo)
+                .font(.body)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+
+            Text(titulo)
+                .font(.subheadline)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+        .frame(minHeight: 44)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
     }
 
     private var menuAcoesPerfil: some View {
