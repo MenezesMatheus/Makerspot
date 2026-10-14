@@ -24,6 +24,7 @@ final class SpotsViewModel {
     private(set) var quantidadeRegistrosIgnorados = 0
     private(set) var tipoSelecionado: TipoSpot?
     private(set) var coordenadasDeReferencia: Coordenadas?
+    private(set) var dataAtual = Date()
 
     private let crud: SpotCRUD
     private let salvosCRUD: SalvosCRUD
@@ -37,7 +38,7 @@ final class SpotsViewModel {
 
     var eventosEmDestaque: [Spot] {
         let eventosDisponiveis = spots.filter { spot in
-            spot.tipo == .evento && spot.estaDisponivel()
+            spot.tipo == .evento && spot.estaDisponivel(em: dataAtual)
         }
 
         return Array(eventosDisponiveis.sorted(by: ordenarEventos).prefix(3))
@@ -102,6 +103,9 @@ final class SpotsViewModel {
         let tarefaLocalizacao = Task {
             await localizacaoUsuario.obterCoordenadas()
         }
+        let tarefaEventos = Task {
+            try await crud.listarEventosAtivos()
+        }
 
         var paginasCarregadas = 0
         repeat {
@@ -111,6 +115,9 @@ final class SpotsViewModel {
             && podeCarregarMais
             && paginasCarregadas < 3
 
+        if !Task.isCancelled, let eventos = try? await tarefaEventos.value {
+            incorporarEventos(eventos)
+        }
         coordenadasDeReferencia = await tarefaLocalizacao.value
         await sincronizarSalvos()
     }
@@ -129,6 +136,9 @@ final class SpotsViewModel {
         }
 
         do {
+            let tarefaEventos = Task {
+                try await crud.listarEventosAtivos()
+            }
             var novos: [Spot] = []
             var novoCursor: CursorPaginaSpots?
             var ignorados = 0
@@ -145,8 +155,7 @@ final class SpotsViewModel {
                 paginasCarregadas += 1
             } while novoCursor != nil
                 && paginasCarregadas < 3
-                && (novos.filter { $0.tipo == .evento }.count < 3
-                    || novos.filter { $0.tipo == .espaco }.count < 5)
+                && novos.filter { $0.tipo == .espaco }.count < 5
                 && !Task.isCancelled
 
             guard !Task.isCancelled else { return }
@@ -155,6 +164,9 @@ final class SpotsViewModel {
             identificadoresCarregados = Set(novos.map(\.id))
             quantidadeRegistrosIgnorados = ignorados
             podeCarregarMais = novoCursor != nil
+            if !Task.isCancelled, let eventos = try? await tarefaEventos.value {
+                incorporarEventos(eventos)
+            }
             await sincronizarSalvos()
         } catch ErroCloudKit.operacaoCancelada {
             return
@@ -239,8 +251,9 @@ final class SpotsViewModel {
     }
 
     func atualizarDisponibilidade() {
+        dataAtual = Date()
         aplicarAlteracoes()
-        spots.removeAll { !$0.estaDisponivel() }
+        spots.removeAll { !$0.estaDisponivel(em: dataAtual) }
     }
 
     private func observarAlteracoes(_ alteracoes: AlteracoesSpots) {
@@ -254,7 +267,7 @@ final class SpotsViewModel {
     private func aplicarAlteracoes() {
         guard let alteracoes else { return }
         spots = alteracoes.consolidar(spots) {
-            $0.estaDisponivel() && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
+            $0.estaDisponivel(em: dataAtual) && (tipoSelecionado == nil || $0.tipo == tipoSelecionado)
         }
         if let salvos = try? salvosCRUD.listar() {
             identificadoresSalvos = Set(salvos.map(\.spotID))
@@ -270,6 +283,7 @@ final class SpotsViewModel {
     }
 
     private func redefinirPaginacao(tipo: TipoSpot?) {
+        dataAtual = Date()
         spots = []
         cursor = nil
         identificadoresCarregados = []
@@ -281,19 +295,38 @@ final class SpotsViewModel {
     }
 
     private var precisaCompletarDestaques: Bool {
-        eventosEmDestaque.count < 3 || espacosEmDestaque.count < 5
+        espacosEmDestaque.count < 5
     }
 
     private func ordenarEventos(_ primeiro: Spot, _ segundo: Spot) -> Bool {
-        if coordenadasDeReferencia != nil {
-            let distanciaPrimeiro = distanciaAteReferencia(primeiro)
-            let distanciaSegundo = distanciaAteReferencia(segundo)
-            if distanciaPrimeiro != distanciaSegundo {
-                return distanciaPrimeiro < distanciaSegundo
-            }
+        let pontuacaoPrimeiro = pontuacaoDestaque(primeiro)
+        let pontuacaoSegundo = pontuacaoDestaque(segundo)
+        if pontuacaoPrimeiro != pontuacaoSegundo {
+            return pontuacaoPrimeiro < pontuacaoSegundo
         }
+        if inicio(do: primeiro) != inicio(do: segundo) {
+            return inicio(do: primeiro) < inicio(do: segundo)
+        }
+        return primeiro.id.uuidString < segundo.id.uuidString
+    }
 
-        return inicio(do: primeiro) < inicio(do: segundo)
+    private func pontuacaoDestaque(_ spot: Spot) -> Double {
+        let horasAteInicio = max(0, inicio(do: spot).timeIntervalSince(dataAtual) / 3_600)
+        guard coordenadasDeReferencia != nil else { return horasAteInicio }
+        // Uma hora de espera pesa tanto quanto dois quilômetros de deslocamento.
+        return horasAteInicio * 2 + distanciaAteReferencia(spot) / 1_000
+    }
+
+    private func incorporarEventos(_ eventos: [Spot]) {
+        for evento in eventos where tipoSelecionado == nil || tipoSelecionado == .evento {
+            if let indice = spots.firstIndex(where: { $0.id == evento.id }) {
+                spots[indice] = evento
+            } else {
+                spots.append(evento)
+            }
+            identificadoresCarregados.insert(evento.id)
+        }
+        aplicarAlteracoes()
     }
 
     private func ordenarPorProximidade(_ primeiro: Spot, _ segundo: Spot) -> Bool {

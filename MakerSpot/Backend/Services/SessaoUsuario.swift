@@ -48,6 +48,7 @@ final class SessaoUsuario {
     @ObservationIgnored lazy var enviosFotosCadastro = EnviosFotosCadastroSpots(sessao: self)
     @ObservationIgnored private var fotosDetalhesEmCache: [UUID: FotosDetalhesEmCache] = [:]
     @ObservationIgnored private var capasSpotsEmCache: [UUID: CapaSpotEmCache] = [:]
+    @ObservationIgnored private let cachePersistenteFotosSpots = CachePersistenteFotosSpots()
     @ObservationIgnored private var fotosPublicadoresEmCache: [UUID: FotoDisponivel] = [:]
     @ObservationIgnored private var publicadoresSemFotoAte: [UUID: Date] = [:]
     @ObservationIgnored private var buscasFotosPublicadores: [UUID: Task<FotoDisponivel?, Never>] = [:]
@@ -59,7 +60,7 @@ final class SessaoUsuario {
     @ObservationIgnored private var operacaoUsuarioPublico: (id: UUID, tarefa: Task<Void, Error>)?
 
     private static let validadeDaContaCloudKit: TimeInterval = 60
-    private static let validadeDoCacheDeFotos: TimeInterval = 15 * 60
+    static let validadeDoCacheDeFotos: TimeInterval = 7 * 24 * 60 * 60
     private static let limiteDeDetalhesEmCache = 12
     private static let limiteDeCapasEmCache = 80
 
@@ -108,6 +109,7 @@ final class SessaoUsuario {
 
     func encerrar() throws {
         try ChaveiroSessao.remover()
+        cachePersistenteFotosSpots.removerConta(usuarioAtual?.id)
         salvosLocais.interromper()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
@@ -134,6 +136,7 @@ final class SessaoUsuario {
 
     func bloquear() {
         try? ChaveiroSessao.remover()
+        cachePersistenteFotosSpots.removerConta(usuarioAtual?.id)
         salvosLocais.interromper()
         enviosFotosCadastro.interromper()
         fotosDetalhesEmCache = [:]
@@ -183,59 +186,98 @@ final class SessaoUsuario {
 
     func fotosEmCache(para spot: Spot) -> [FotoDisponivel]? {
         let agora = Date()
-        guard let entrada = fotosDetalhesEmCache[spot.id],
-              entrada.ids == spot.fotoIDs,
-              entrada.expiraEm > agora,
-              entrada.fotos.allSatisfy({ FileManager.default.fileExists(atPath: $0.arquivoURL.path) }) else {
-            fotosDetalhesEmCache[spot.id] = nil
-            return nil
+        if let entrada = fotosDetalhesEmCache[spot.id],
+           entrada.ids == spot.fotoIDs,
+           entrada.expiraEm > agora,
+           entrada.fotos.allSatisfy({ FileManager.default.fileExists(atPath: $0.arquivoURL.path) }) {
+            fotosDetalhesEmCache[spot.id]?.ultimoAcesso = agora
+            return entrada.fotos
         }
-        fotosDetalhesEmCache[spot.id]?.ultimoAcesso = agora
+        fotosDetalhesEmCache[spot.id] = nil
+        guard let usuarioID = usuarioAtual?.id,
+              let entrada = cachePersistenteFotosSpots.carregar(
+                para: spot, usuarioID: usuarioID, tipo: .detalhes, agora: agora
+              ) else { return nil }
+        fotosDetalhesEmCache[spot.id] = FotosDetalhesEmCache(
+            ids: spot.fotoIDs,
+            fotos: entrada.fotos,
+            ultimoAcesso: agora,
+            expiraEm: entrada.expiraEm
+        )
+        descartarFotosDeDetalhesAntigas()
         return entrada.fotos
     }
 
     func guardarFotosEmCache(_ fotos: [FotoDisponivel], para spot: Spot) {
         guard fotos.map(\.foto.id) == spot.fotoIDs else { return }
         let agora = Date()
+        let expiraEm = agora.addingTimeInterval(Self.validadeDoCacheDeFotos)
         fotosDetalhesEmCache[spot.id] = FotosDetalhesEmCache(
             ids: spot.fotoIDs,
             fotos: fotos,
             ultimoAcesso: agora,
-            expiraEm: agora.addingTimeInterval(Self.validadeDoCacheDeFotos)
+            expiraEm: expiraEm
         )
         descartarFotosDeDetalhesAntigas()
+        if let usuarioID = usuarioAtual?.id {
+            cachePersistenteFotosSpots.guardar(
+                fotos, para: spot, usuarioID: usuarioID, tipo: .detalhes,
+                expiraEm: expiraEm
+            )
+        }
         if let capa = fotos.first { guardarCapaEmCache(capa, para: spot) }
     }
 
     func removerFotosEmCache(do spotID: UUID) {
         fotosDetalhesEmCache[spotID] = nil
         capasSpotsEmCache[spotID] = nil
+        if let usuarioID = usuarioAtual?.id {
+            cachePersistenteFotosSpots.remover(spotID: spotID, usuarioID: usuarioID)
+        }
     }
 
     func capaEmCache(para spot: Spot) -> FotoDisponivel? {
         let agora = Date()
-        guard let fotoID = spot.fotoIDs.first,
-              let entrada = capasSpotsEmCache[spot.id],
-              entrada.fotoID == fotoID,
-              entrada.expiraEm > agora,
-              FileManager.default.fileExists(atPath: entrada.foto.arquivoURL.path) else {
-            capasSpotsEmCache[spot.id] = nil
-            return nil
+        guard let fotoID = spot.fotoIDs.first else { return nil }
+        if let entrada = capasSpotsEmCache[spot.id],
+           entrada.fotoID == fotoID,
+           entrada.expiraEm > agora,
+           FileManager.default.fileExists(atPath: entrada.foto.arquivoURL.path) {
+            capasSpotsEmCache[spot.id]?.ultimoAcesso = agora
+            return entrada.foto
         }
-        capasSpotsEmCache[spot.id]?.ultimoAcesso = agora
-        return entrada.foto
+        capasSpotsEmCache[spot.id] = nil
+        guard let usuarioID = usuarioAtual?.id,
+              let entrada = cachePersistenteFotosSpots.carregar(
+                para: spot, usuarioID: usuarioID, tipo: .capa, agora: agora
+              ), let foto = entrada.fotos.first else { return nil }
+        capasSpotsEmCache[spot.id] = CapaSpotEmCache(
+            fotoID: fotoID,
+            foto: foto,
+            ultimoAcesso: agora,
+            expiraEm: entrada.expiraEm
+        )
+        descartarCapasAntigas()
+        return foto
     }
 
     func guardarCapaEmCache(_ foto: FotoDisponivel, para spot: Spot) {
         guard spot.fotoIDs.first == foto.foto.id else { return }
         let agora = Date()
+        let expiraEm = agora.addingTimeInterval(Self.validadeDoCacheDeFotos)
         capasSpotsEmCache[spot.id] = CapaSpotEmCache(
             fotoID: foto.foto.id,
             foto: foto,
             ultimoAcesso: agora,
-            expiraEm: agora.addingTimeInterval(Self.validadeDoCacheDeFotos)
+            expiraEm: expiraEm
         )
         descartarCapasAntigas()
+        if let usuarioID = usuarioAtual?.id {
+            cachePersistenteFotosSpots.guardar(
+                [foto], para: spot, usuarioID: usuarioID, tipo: .capa,
+                expiraEm: expiraEm
+            )
+        }
     }
 
     private func descartarFotosDeDetalhesAntigas() {

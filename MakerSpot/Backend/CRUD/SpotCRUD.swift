@@ -147,6 +147,22 @@ final class SpotCRUD {
         )
     }
 
+    func listarEventosAtivos() async throws -> [Spot] {
+        _ = try await autorizacao.contextoAtual()
+        let resultado = try await cliente.consultarTodos(
+            tipo: .spot,
+            predicado: predicadoListagem(
+                somenteAtivos: true,
+                proprietarioID: nil,
+                tipo: .evento
+            )
+        )
+        try ApoioCRUD.exigirSemFalhas(resultado.falhas)
+        let agora = Date()
+        return resultado.registros.compactMap { try? ApoioCRUD.spotValido(de: $0) }
+            .filter { $0.estaDisponivel(em: agora) }
+    }
+
     func listarDoUsuarioAtual(tipo: TipoSpot? = nil) async throws -> [Spot] {
         let contexto = try await autorizacao.contextoAtual()
         let resultado = try await cliente.consultarTodos(
